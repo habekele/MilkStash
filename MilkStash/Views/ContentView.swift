@@ -15,24 +15,18 @@ struct ContentView: View {
     @Binding var selectedTab: Int
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            HomeView()
-                .tabItem { Label("Home", systemImage: "house.fill") }
-                .tag(0)
+        ZStack(alignment: .bottom) {
+            ZStack {
+                HomeView()    .opacity(selectedTab == 0 ? 1 : 0)
+                InventoryView().opacity(selectedTab == 1 ? 1 : 0)
+                GoalView()    .opacity(selectedTab == 2 ? 1 : 0)
+                SettingsView().opacity(selectedTab == 3 ? 1 : 0)
+            }
 
-            InventoryView()
-                .tabItem { Label("Inventory", systemImage: "list.bullet.rectangle.fill") }
-                .tag(1)
-
-            GoalView()
-                .tabItem { Label("Journey", systemImage: "heart.circle.fill") }
-                .tag(2)
-
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-                .tag(3)
+            FFTabBar(selectedTab: $selectedTab)
+                .padding(.bottom, 8)
         }
-        .tint(Color.milkIndigo)
+        .ignoresSafeArea(edges: .bottom)
         .task {
             if settings.isEmpty {
                 let s = AppSettings()
@@ -43,70 +37,246 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Design System
+// MARK: - Custom Tab Bar
 
-extension Color {
-    // Each color adapts: richer/darker in light mode, brighter/lighter in dark mode.
-    // UIColor(dynamicProvider:) gives us full control over both appearances.
+struct FFTabBar: View {
+    @Binding var selectedTab: Int
 
-    // Primary — indigo
-    // Light: deep indigo  |  Dark: soft periwinkle (much easier to read)
-    static let milkIndigo = Color(UIColor { t in
-        t.userInterfaceStyle == .dark
-            ? UIColor(red: 0.55, green: 0.62, blue: 1.00, alpha: 1)   // bright periwinkle
-            : UIColor(red: 0.22, green: 0.25, blue: 0.58, alpha: 1)   // deep indigo
-    })
+    private let items: [(icon: String, label: String)] = [
+        ("house.fill",      "Today"),
+        ("shippingbox.fill","Stash"),
+        ("heart.fill",      "Journey"),
+        ("gearshape.fill",  "Settings"),
+    ]
 
-    // Accent — coral
-    // Light: deep coral (4.7:1 on white)  |  Dark: soft peach
-    static let milkCoral = Color(UIColor { t in
-        t.userInterfaceStyle == .dark
-            ? UIColor(red: 1.00, green: 0.68, blue: 0.62, alpha: 1)   // soft peach
-            : UIColor(red: 0.76, green: 0.30, blue: 0.24, alpha: 1)   // deep coral
-    })
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<items.count, id: \.self) { idx in
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        selectedTab = idx
+                    }
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: items[idx].icon)
+                            .font(.system(size: 20, weight: selectedTab == idx ? .semibold : .regular))
+                            .foregroundStyle(selectedTab == idx ? Color.ffTerra : Color.ffInk4)
+                            .scaleEffect(selectedTab == idx ? 1.08 : 1.0)
+                            .shadow(color: selectedTab == idx ? Color.ffTerra.opacity(0.45) : .clear,
+                                    radius: 6, x: 0, y: 2)
 
-    // Positive — sage green
-    // Light: deep sage (4.8:1 on white)  |  Dark: mint (pops on dark)
-    static let milkSage = Color(UIColor { t in
-        t.userInterfaceStyle == .dark
-            ? UIColor(red: 0.45, green: 0.90, blue: 0.68, alpha: 1)   // bright mint
-            : UIColor(red: 0.22, green: 0.50, blue: 0.35, alpha: 1)   // deep sage
-    })
-
-    // Warning — amber
-    // Light: dark amber (4.7:1 on white)  |  Dark: soft yellow
-    static let milkWarn = Color(UIColor { t in
-        t.userInterfaceStyle == .dark
-            ? UIColor(red: 1.00, green: 0.85, blue: 0.40, alpha: 1)   // soft yellow
-            : UIColor(red: 0.60, green: 0.42, blue: 0.00, alpha: 1)   // dark amber
-    })
-
-    // Danger — rose red
-    // Light: deep red (5.5:1 on white)  |  Dark: bright salmon
-    static let milkDanger = Color(UIColor { t in
-        t.userInterfaceStyle == .dark
-            ? UIColor(red: 1.00, green: 0.45, blue: 0.45, alpha: 1)   // bright salmon
-            : UIColor(red: 0.75, green: 0.22, blue: 0.22, alpha: 1)   // deep red
-    })
-
-    // Cream background tint
-    static let milkCream = Color(UIColor { t in
-        t.userInterfaceStyle == .dark
-            ? UIColor(red: 0.12, green: 0.12, blue: 0.18, alpha: 1)   // dark blue-tinted bg
-            : UIColor(red: 0.99, green: 0.97, blue: 0.94, alpha: 1)   // warm cream
-    })
-
-    // Card background — system handles this automatically
-    static let cardBg = Color(.secondarySystemGroupedBackground)
-
-    // Aliases
-    static let milkBlue  = Color.milkIndigo
-    static let milkTeal  = Color.milkCoral
-    static let milkGreen = Color.milkSage
+                        Text(items[idx].label)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(selectedTab == idx ? Color.ffTerra : Color.ffInk4)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(Color.ffLine, lineWidth: 0.5))
+        .padding(.horizontal, 24)
+        .shadow(color: .black.opacity(0.12), radius: 16, x: 0, y: 6)
+    }
 }
 
+// MARK: - Design System: Color Tokens
 
-// MARK: - Keyboard Helpers
+extension Color {
+
+    // Background
+    static let ffBg = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.165, green: 0.133, blue: 0.094, alpha: 1)  // #2A2218
+            : UIColor(red: 0.961, green: 0.949, blue: 0.922, alpha: 1)  // #F5F2EB
+    })
+
+    // Surface (card)
+    static let ffSurface = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.200, green: 0.173, blue: 0.133, alpha: 1)  // #332C22
+            : UIColor(red: 0.992, green: 0.980, blue: 0.961, alpha: 1)  // #FDFAF5
+    })
+
+    // Surface 2 (nested card)
+    static let ffSurface2 = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.239, green: 0.204, blue: 0.157, alpha: 1)  // #3D3428
+            : UIColor(red: 0.969, green: 0.953, blue: 0.925, alpha: 1)  // #F7F3EC
+    })
+
+    // Divider / border line
+    static let ffLine = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.290, green: 0.251, blue: 0.208, alpha: 1)  // #4A4035
+            : UIColor(red: 0.878, green: 0.851, blue: 0.800, alpha: 1)  // #E0D9CC
+    })
+
+    // Primary text
+    static let ffInk = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.961, green: 0.941, blue: 0.910, alpha: 1)  // #F5F0E8
+            : UIColor(red: 0.165, green: 0.133, blue: 0.094, alpha: 1)  // #2A2218
+    })
+
+    // Secondary text
+    static let ffInk2 = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.784, green: 0.722, blue: 0.604, alpha: 1)  // #C8B89A
+            : UIColor(red: 0.361, green: 0.306, blue: 0.251, alpha: 1)  // #5C4E40
+    })
+
+    // Tertiary text
+    static let ffInk3 = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.549, green: 0.494, blue: 0.416, alpha: 1)  // #8C7E6A
+            : UIColor(red: 0.549, green: 0.494, blue: 0.439, alpha: 1)  // #8C7E70
+    })
+
+    // Quaternary / icons
+    static let ffInk4 = Color(UIColor { _ in
+        UIColor(red: 0.690, green: 0.627, blue: 0.565, alpha: 1)         // #B0A090
+    })
+
+    // Terracotta (primary accent)
+    static let ffTerra = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.831, green: 0.533, blue: 0.353, alpha: 1)  // #D4885A
+            : UIColor(red: 0.769, green: 0.471, blue: 0.251, alpha: 1)  // #C47840
+    })
+
+    // Terracotta soft background
+    static let ffTerraSoft = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.290, green: 0.180, blue: 0.102, alpha: 1)  // #4A2E1A
+            : UIColor(red: 0.961, green: 0.918, blue: 0.878, alpha: 1)  // #F5EAE0
+    })
+
+    // Sage green
+    static let ffSage = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.510, green: 0.745, blue: 0.565, alpha: 1)  // brighter in dark
+            : UIColor(red: 0.420, green: 0.620, blue: 0.471, alpha: 1)  // #6B9E78
+    })
+
+    // Sage soft background
+    static let ffSageSoft = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.157, green: 0.255, blue: 0.180, alpha: 1)  // dark sage tint
+            : UIColor(red: 0.910, green: 0.953, blue: 0.918, alpha: 1)  // #E8F3EA
+    })
+
+    // Butter / warning
+    static let ffButter = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.878, green: 0.749, blue: 0.404, alpha: 1)  // brighter in dark
+            : UIColor(red: 0.788, green: 0.659, blue: 0.298, alpha: 1)  // #C9A84C
+    })
+
+    // Butter soft background
+    static let ffButterSoft = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.251, green: 0.212, blue: 0.102, alpha: 1)  // dark butter tint
+            : UIColor(red: 0.961, green: 0.929, blue: 0.855, alpha: 1)  // #F5EDDA
+    })
+
+    // Legacy aliases kept for compatibility with other files
+    static let milkIndigo  = Color.ffTerra
+    static let milkCoral   = Color.ffTerra
+    static let milkSage    = Color.ffSage
+    static let milkWarn    = Color.ffButter
+    static let milkDanger  = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 1.00, green: 0.45, blue: 0.45, alpha: 1)
+            : UIColor(red: 0.75, green: 0.22, blue: 0.22, alpha: 1)
+    })
+    static let milkCream   = Color.ffBg
+    static let cardBg      = Color.ffSurface
+    static let milkBlue    = Color.ffTerra
+    static let milkTeal    = Color.ffTerra
+    static let milkGreen   = Color.ffSage
+}
+
+// MARK: - Shared Design Components
+
+/// Standard card container
+struct FFCard<Content: View>: View {
+    let content: () -> Content
+    var padding: CGFloat = 18
+
+    init(padding: CGFloat = 18, @ViewBuilder content: @escaping () -> Content) {
+        self.padding = padding
+        self.content = content
+    }
+
+    var body: some View {
+        content()
+            .padding(padding)
+            .background(Color.ffSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color.ffLine, lineWidth: 0.5))
+    }
+}
+
+/// Encouragement strip with leaf icon and sage tint
+struct FFEncouragement: View {
+    let message: String
+    var icon: String = "leaf.fill"
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.ffSage)
+            Text(message)
+                .font(.system(size: 14, weight: .regular))
+                .italic()
+                .foregroundStyle(Color.ffInk2)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.ffSageSoft)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ffSage.opacity(0.25), lineWidth: 0.5))
+    }
+}
+
+/// Thin divider in ffLine color
+struct FFDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.ffLine)
+            .frame(height: 0.5)
+    }
+}
+
+/// Standard section eyebrow label
+struct FFEyebrow: View {
+    let text: String
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .medium))
+            .tracking(2)
+            .foregroundStyle(Color.ffInk3)
+    }
+}
+
+// MARK: - Shared Date Formatters
+
+extension DateFormatter {
+    static let calMonth: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMM"; return f
+    }()
+    static let calDay: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "d"; return f
+    }()
+}
+
+// MARK: - Keyboard Helper
 
 extension View {
     func hideKeyboard() {

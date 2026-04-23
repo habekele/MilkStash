@@ -86,7 +86,6 @@ final class InventoryViewModel {
 final class AddEditBagViewModel {
     var volumePerBagText: String = ""
     var milkBagCountText: String = "1"
-    var partialVolumeText: String = ""      // optional partial oz in current unit
     var unit: MilkUnit = .oz
     var freezeDate: Date = Date()
     var useCustomExpiration: Bool = false
@@ -101,24 +100,16 @@ final class AddEditBagViewModel {
 
     var volumePerBag: Double { Double(volumePerBagText) ?? 0 }
     var milkBagCount: Int    { Int(milkBagCountText) ?? 1 }
-    var partialVolumeOz: Double {
-        guard let v = Double(partialVolumeText), v > 0 else { return 0 }
-        return unit == .oz ? v : v / UnitConversion.mLPerOz
-    }
 
-    /// Computed total for display while editing
     var computedTotalOz: Double {
         let perBagOz = unit == .oz ? volumePerBag : volumePerBag / UnitConversion.mLPerOz
-        return Double(milkBagCount) * perBagOz + partialVolumeOz
+        return Double(milkBagCount) * perBagOz
     }
 
     func load(from bag: MilkBag, settings: AppSettings) {
         unit = bag.unit
         volumePerBagText = String(format: "%.1f", bag.volumePerBagIn(bag.unit))
         milkBagCountText = "\(bag.milkBagCount)"
-        if bag.partialVolumeOz > 0 {
-            partialVolumeText = String(format: "%.1f", UnitConversion.convert(bag.partialVolumeOz, from: .oz, to: bag.unit))
-        }
         freezeDate = bag.freezeDate
         useCustomExpiration = true
         expirationDate = bag.expirationDate
@@ -147,7 +138,8 @@ final class AddEditBagViewModel {
         return true
     }
 
-    func save(bag: MilkBag? = nil, context: ModelContext, settings: AppSettings) {
+    @discardableResult
+    func save(bag: MilkBag? = nil, context: ModelContext, settings: AppSettings) -> Bool {
         let expiry = useCustomExpiration
             ? expirationDate
             : StashService.expirationDate(from: freezeDate, months: settings.defaultExpirationMonths)
@@ -156,7 +148,6 @@ final class AddEditBagViewModel {
             existing.volumePerBagOz = unit == .oz ? volumePerBag : volumePerBag / UnitConversion.mLPerOz
             existing.displayUnit = unit.rawValue
             existing.milkBagCount = milkBagCount
-            existing.partialVolumeOz = partialVolumeOz
             existing.freezeDate = freezeDate
             existing.expirationDate = expiry
             existing.location = location
@@ -169,7 +160,6 @@ final class AddEditBagViewModel {
                 volumePerBag: volumePerBag,
                 unit: unit,
                 milkBagCount: milkBagCount,
-                partialVolumeOz: partialVolumeOz,
                 freezeDate: freezeDate,
                 expirationDate: expiry,
                 location: location,
@@ -182,9 +172,11 @@ final class AddEditBagViewModel {
         }
         do {
             try context.save()
-            print("✅ Bag saved successfully")
+            validationError = nil
+            return true
         } catch {
-            print("❌ Save failed: \(error)")
+            validationError = "Couldn't save your changes. Please try again."
+            return false
         }
     }
 }

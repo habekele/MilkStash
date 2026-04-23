@@ -15,7 +15,7 @@ struct AddEditBagView: View {
     @State private var vm = AddEditBagViewModel()
     @FocusState private var focusedField: Field?
 
-    enum Field { case volumePerBag, count, partial, location, bin, label, notes }
+    enum Field { case volumePerBag, count, location, bin, label, notes }
 
     private var isEditing: Bool { bag != nil }
 
@@ -121,24 +121,6 @@ struct AddEditBagView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                    }
-
-                    // Optional partial volume (open/partially used bag)
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Partial bag volume")
-                            Text("If one bag is already partially used")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        TextField("0", text: $vm.partialVolumeText)
-                            .keyboardType(.decimalPad)
-                            .focused($focusedField, equals: .partial)
-                            .multilineTextAlignment(.trailing)
-                            .frame(width: 60)
-                        Text(vm.unit.rawValue)
-                            .foregroundStyle(.secondary)
                     }
 
                     // Computed total
@@ -287,8 +269,9 @@ struct AddEditBagView: View {
 
     private func save() {
         guard vm.validate() else { return }
-        vm.save(bag: bag, context: context, settings: appSettings)
-        dismiss()
+        if vm.save(bag: bag, context: context, settings: appSettings) {
+            dismiss()
+        }
     }
 }
 

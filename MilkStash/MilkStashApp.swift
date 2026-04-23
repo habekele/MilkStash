@@ -8,21 +8,21 @@ struct MilkStashApp: App {
     let container: ModelContainer
 
     init() {
-        do {
-            let schema = Schema([MilkBag.self, AppSettings.self])
-            let config = ModelConfiguration(
-                schema: schema,
-                cloudKitDatabase: .automatic
-            )
-            container = try ModelContainer(for: schema, configurations: config)
-        } catch {
-            // Fallback — local-only if CloudKit setup fails
-            let schema = Schema([MilkBag.self, AppSettings.self])
-            let config = ModelConfiguration(
-                schema: schema,
-                cloudKitDatabase: .none
-            )
-            container = try! ModelContainer(for: schema, configurations: config)
+        let schema = Schema([MilkBag.self, AppSettings.self])
+        // Try CloudKit-backed store first, fall back to local-only, then in-memory.
+        // Each tier handles the case where the previous one fails (e.g. entitlement
+        // missing in debug builds, or a store that can't be migrated in the field).
+        if let c = try? ModelContainer(for: schema, configurations:
+            ModelConfiguration(schema: schema, cloudKitDatabase: .automatic)) {
+            container = c
+        } else if let c = try? ModelContainer(for: schema, configurations:
+            ModelConfiguration(schema: schema, cloudKitDatabase: .none)) {
+            container = c
+        } else {
+            // Last resort: in-memory store so the app launches rather than crashes.
+            // Data entered in this session will not persist.
+            container = try! ModelContainer(for: schema, configurations:
+                ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         }
     }
 

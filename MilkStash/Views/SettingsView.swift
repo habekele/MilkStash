@@ -7,23 +7,25 @@ struct SettingsView: View {
     @Query private var settings: [AppSettings]
     @Environment(\.modelContext) private var context
 
-    // Always work with a real persisted settings object
-    private var appSettings: AppSettings {
-        // Always return the same persisted object — never a throwaway
-        if let s = settings.first { return s }
-        let s = AppSettings()
-        context.insert(s)
-        try? context.save()
+    private var appSettings: AppSettings { settings.first ?? AppSettings() }
+
+    @discardableResult
+    private func mutateSettings(_ block: (AppSettings) -> Void) -> AppSettings {
+        let s: AppSettings
+        if let existing = settings.first {
+            s = existing
+        } else {
+            s = AppSettings()
+            context.insert(s)
+        }
+        block(s)
+        do { try context.save() } catch { print("SettingsView: save failed:", error) }
         return s
     }
 
-    // Use this when writing to guarantee we hit the persisted record
-    private func persistedSettings() -> AppSettings {
-        if let s = settings.first { return s }
-        let s = AppSettings()
-        context.insert(s)
-        try? context.save()
-        return s
+    private func refreshEditableText(using settings: AppSettings) {
+        thresholdText = String(format: "%.0f", settings.lowStashThresholdDisplayValue)
+        dailyOzText   = String(format: "%.0f", settings.dailyGoalDisplayValue)
     }
 
     @AppStorage("appearanceMode") private var appearanceMode: String = "system"
@@ -34,126 +36,24 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Display") {
-                    Picker("Preferred Unit", selection: Binding(
-                        get: { appSettings.preferredUnit },
-                        set: { appSettings.preferredUnit = $0; try? context.save() }
-                    )) {
-                        ForEach(MilkUnit.allCases, id: \.self) { u in
-                            Text(u.rawValue).tag(u)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-
-                    Picker("Appearance", selection: $appearanceMode) {
-                        Text("System").tag("system")
-                        Text("Light").tag("light")
-                        Text("Dark").tag("dark")
-                    }
-                    .pickerStyle(.segmented)
+            ScrollView {
+                VStack(spacing: 20) {
+                    headerArea
+                    displaySection
+                    expirationSection
+                    babySection
+                    fifoSection
+                    aboutSection
+                    footerText
                 }
-
-                Section("Expiration") {
-                    Picker("Default Shelf Life", selection: Binding(
-                        get: { appSettings.defaultExpirationMonths },
-                        set: { appSettings.defaultExpirationMonths = $0; try? context.save() }
-                    )) {
-                        Text("3 months").tag(3)
-                        Text("6 months").tag(6)
-                        Text("12 months").tag(12)
-                    }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                }
-
-                Section {
-                    HStack {
-                        Text("Low Stash Alert")
-                        Spacer()
-                        TextField("100", text: $thresholdText)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                            .focused($focusThreshold)
-                            .frame(width: 80)
-                            .onChange(of: thresholdText) {
-                                if let val = Double(thresholdText), val > 0 {
-                                    persistedSettings().lowStashThresholdOz = val
-                                    try? context.save()
-                                }
-                            }
-                        Text(appSettings.preferredUnit.rawValue).foregroundStyle(.secondary)
-                    }
-                } header: {
-                    Text("Thresholds")
-                } footer: {
-                    Text("A warning appears on the home screen when your stash drops below this amount.")
-                }
-
-                Section {
-                    HStack {
-                        Text("Daily consumption")
-                        Spacer()
-                        TextField("25", text: $dailyOzText)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                            .focused($focusDailyOz)
-                            .frame(width: 60)
-                            .onChange(of: dailyOzText) {
-                                if let val = Double(dailyOzText), val > 0 {
-                                    persistedSettings().dailyOzGoal = val
-                                    try? context.save()
-                                }
-                            }
-                        Text("\(appSettings.preferredUnit.rawValue)/day").foregroundStyle(.secondary)
-                    }
-
-                    // Live preview of the formula
-                    HStack {
-                        Text("Days worth formula")
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        let goal = Double(dailyOzText) ?? appSettings.dailyOzGoal
-                        Text("total oz ÷ \(String(format: "%.0f", max(goal, 1)))")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.milkIndigo)
-                            .monospacedDigit()
-                    }
-                } header: {
-                    Text("Days Worth")
-                } footer: {
-                    Text("How many oz your baby drinks per day. Used to calculate how long your stash will last.")
-                }
-
-                Section("FIFO Options") {
-                    Toggle("Include Expired by Default", isOn: Binding(
-                        get: { appSettings.includeExpiredInFIFO },
-                        set: { appSettings.includeExpiredInFIFO = $0; try? context.save() }
-                    ))
-                }
-
-                Section("About") {
-                    HStack {
-                        Text("Unit Conversion")
-                        Spacer()
-                        Text("1 oz = 29.5735 mL")
-                            .foregroundStyle(.secondary)
-                            .font(.caption)
-                    }
-                    HStack {
-                        Text("App Version")
-                        Spacer()
-                        Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+                .padding(.bottom, 100)
             }
-            .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.large)
+            .background(Color.ffBg.ignoresSafeArea())
+            .navigationBarHidden(true)
             .onAppear {
-                thresholdText = String(format: "%.0f", appSettings.lowStashThresholdOz)
-                dailyOzText   = String(format: "%.0f", appSettings.dailyOzGoal)
+                refreshEditableText(using: appSettings)
             }
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
@@ -161,10 +61,249 @@ struct SettingsView: View {
                     Button("Done") {
                         focusThreshold = false
                         focusDailyOz   = false
-                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                        UIApplication.shared.sendAction(
+                            #selector(UIResponder.resignFirstResponder),
+                            to: nil, from: nil, for: nil
+                        )
+                    }
+                    .foregroundStyle(Color.ffTerra)
+                }
+            }
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerArea: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            FFEyebrow(text: "MAKE IT YOURS")
+            Text("Settings")
+                .font(.system(size: 34, weight: .regular, design: .serif))
+                .foregroundStyle(Color.ffInk)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 4)
+    }
+
+    // MARK: - Display Section
+
+    private var displaySection: some View {
+        settingsSection(title: "DISPLAY") {
+            // Unit picker
+            HStack {
+                settingsLabel(icon: "ruler", label: "Unit")
+                Spacer()
+                Picker("Unit", selection: Binding(
+                    get: { appSettings.preferredUnit },
+                    set: { v in
+                        let updated = mutateSettings {
+                            $0.preferredUnit = v
+                        }
+                        refreshEditableText(using: updated)
+                    }
+                )) {
+                    ForEach(MilkUnit.allCases, id: \.self) { u in
+                        Text(u.rawValue).tag(u)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 130)
+                .tint(Color.ffTerra)
+            }
+
+            FFDivider()
+
+            // Appearance picker
+            HStack {
+                settingsLabel(icon: "circle.lefthalf.filled", label: "Appearance")
+                Spacer()
+                Picker("Appearance", selection: $appearanceMode) {
+                    Text("Auto").tag("system")
+                    Text("Light").tag("light")
+                    Text("Dark").tag("dark")
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 160)
+            }
+        }
+    }
+
+    // MARK: - Expiration Section
+
+    private var expirationSection: some View {
+        settingsSection(title: "EXPIRATION") {
+            VStack(spacing: 0) {
+                ForEach([3, 6, 12], id: \.self) { months in
+                    let isSelected = appSettings.defaultExpirationMonths == months
+                    Button {
+                        mutateSettings { $0.defaultExpirationMonths = months }
+                    } label: {
+                        HStack {
+                            Text("\(months) months")
+                                .font(.system(size: 15))
+                                .foregroundStyle(Color.ffInk)
+                            Spacer()
+                            ZStack {
+                                Circle()
+                                    .stroke(isSelected ? Color.ffTerra : Color.ffLine, lineWidth: 2)
+                                    .frame(width: 20, height: 20)
+                                if isSelected {
+                                    Circle()
+                                        .fill(Color.ffTerra)
+                                        .frame(width: 11, height: 11)
+                                }
+                            }
+                        }
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+
+                    if months != 12 {
+                        FFDivider()
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Baby Section
+
+    private var babySection: some View {
+        settingsSection(title: "YOUR BABY") {
+            // Daily intake
+            HStack {
+                settingsLabel(icon: "drop.fill", label: "Daily intake")
+                Spacer()
+                TextField("25", text: $dailyOzText)
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .focused($focusDailyOz)
+                    .frame(width: 60)
+                    .font(.system(size: 16, weight: .semibold, design: .serif))
+                    .foregroundStyle(Color.ffTerra)
+                    .onChange(of: dailyOzText) {
+                        if let val = Double(dailyOzText), val > 0 {
+                            mutateSettings { $0.setDailyGoalFromDisplayValue(val) }
+                        }
+                    }
+                Text(appSettings.preferredUnit.rawValue + "/day")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Color.ffInk3)
+                    .frame(width: 50, alignment: .leading)
+            }
+
+            FFDivider()
+
+            // Low stash alert
+            HStack {
+                settingsLabel(icon: "exclamationmark.triangle", label: "Low stash alert")
+                Spacer()
+                TextField("100", text: $thresholdText)
+                    .keyboardType(.decimalPad)
+                    .multilineTextAlignment(.trailing)
+                    .focused($focusThreshold)
+                    .frame(width: 60)
+                    .font(.system(size: 16, weight: .semibold, design: .serif))
+                    .foregroundStyle(Color.ffTerra)
+                    .onChange(of: thresholdText) {
+                        if let val = Double(thresholdText), val > 0 {
+                            mutateSettings { $0.setLowStashThresholdFromDisplayValue(val) }
+                        }
+                    }
+                Text(appSettings.preferredUnit.rawValue)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Color.ffInk3)
+                    .frame(width: 50, alignment: .leading)
+            }
+
+            FFDivider()
+
+            // Goal duration (read-only display, edit via Journey tab)
+            HStack {
+                settingsLabel(icon: "target", label: "Goal duration")
+                Spacer()
+                Text("\(appSettings.goalMonths) months")
+                    .font(.system(size: 16, weight: .semibold, design: .serif))
+                    .foregroundStyle(Color.ffTerra)
+                Text("→ Journey")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(Color.ffInk3)
+                    .padding(.leading, 4)
+            }
+        }
+    }
+
+    // MARK: - FIFO Section
+
+    private var fifoSection: some View {
+        settingsSection(title: "FIFO OPTIONS") {
+            Toggle(isOn: Binding(
+                get: { appSettings.includeExpiredInFIFO },
+                set: { v in mutateSettings { $0.includeExpiredInFIFO = v } }
+            )) {
+                settingsLabel(icon: "clock.arrow.circlepath", label: "Include expired in FIFO")
+            }
+            .tint(Color.ffTerra)
+        }
+    }
+
+    // MARK: - About Section
+
+    private var aboutSection: some View {
+        settingsSection(title: "ABOUT") {
+            HStack {
+                settingsLabel(icon: "arrow.left.arrow.right", label: "Unit conversion")
+                Spacer()
+                Text("1 oz = 29.57 mL")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(Color.ffInk3)
+            }
+
+            FFDivider()
+
+            HStack {
+                settingsLabel(icon: "info.circle", label: "App version")
+                Spacer()
+                Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundStyle(Color.ffInk3)
+            }
+        }
+    }
+
+    // MARK: - Footer
+
+    private var footerText: some View {
+        Text("FreezeFlow v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") · Made with care")
+            .font(.system(size: 12))
+            .foregroundStyle(Color.ffInk4)
+            .frame(maxWidth: .infinity)
+            .padding(.top, 8)
+    }
+
+    // MARK: - Helpers
+
+    private func settingsSection<Content: View>(
+        title: String,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            FFEyebrow(text: title)
+            FFCard {
+                content()
+            }
+        }
+    }
+
+    private func settingsLabel(icon: String, label: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundStyle(Color.ffInk3)
+                .frame(width: 20)
+            Text(label)
+                .font(.system(size: 15))
+                .foregroundStyle(Color.ffInk)
         }
     }
 }

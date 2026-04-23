@@ -14,160 +14,292 @@ struct HomeView: View {
     @State private var showAddBag = false
     @State private var showUseMilk = false
 
+    // MARK: - Date header helpers
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "EEE"; return f
+    }()
+    private static let dateHeaderFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "MMM d"; return f
+    }()
+
+    private var dateHeader: String {
+        let day  = Self.dayFormatter.string(from: Date()).uppercased()
+        let date = Self.dateHeaderFormatter.string(from: Date()).uppercased()
+        return "\(day) · \(date)"
+    }
+
+    // MARK: - Derived values
+    private var totalOz: Double   { vm.totalOz(stashBags) }
+    private var unit: MilkUnit    { appSettings.preferredUnit }
+    private var days: Double      { vm.daysWorth(stashBags, dailyOz: appSettings.effectiveDailyOzGoal) }
+    private var ziplocks: Int     { vm.ziplockCount(stashBags) }
+    private var milkBags: Int     { vm.totalMilkBagCount(stashBags) }
+
+    // weekly delta (approx: oz added in the last 7 days)
+    private var weeklyDeltaOz: Double {
+        let cutoff = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date()
+        return stashBags.filter { $0.freezeDate >= cutoff }.map(\.totalVolumeOz).reduce(0, +)
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    stashSummaryCard
-                    statsRow
-                    quickActionsSection
-                    expiringSoonSection
-                    recentlyAddedSection
+                    headerArea
+                    heroCard
+                    if totalOz > 0 && totalOz < appSettings.effectiveLowStashThresholdOz {
+                        HStack(spacing: 10) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.ffButter)
+                            Text("Stash is running low — \(UnitConversion.formatted(totalOz, in: unit)) remaining, below your \(UnitConversion.formatted(appSettings.effectiveLowStashThresholdOz, in: unit)) alert.")
+                                .font(.system(size: 14, weight: .regular))
+                                .foregroundStyle(Color.ffInk2)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.ffButterSoft)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ffButter.opacity(0.25), lineWidth: 0.5))
+                    }
+                    if weeklyDeltaOz > 0 {
+                        FFEncouragement(
+                            message: "You're up \(UnitConversion.formatted(weeklyDeltaOz, in: unit)) this week. Steady and strong."
+                        )
+                    }
+                    quickActionsRow
+                    atAGlanceSection
+                    useSoonSection
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 32)
-                .frame(maxWidth: 700)
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+                .padding(.bottom, 100)   // room for floating tab bar
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("FreezeFlow")
-            .navigationBarTitleDisplayMode(.large)
+            .background(Color.ffBg.ignoresSafeArea())
+            .navigationBarHidden(true)
         }
         .sheet(isPresented: $showAddBag)  { AddEditBagView(bag: nil) }
         .sheet(isPresented: $showUseMilk) { UseMilkView() }
     }
 
-    // MARK: - Stash Summary Card
+    // MARK: - Header
 
-    private var stashSummaryCard: some View {
-        let totalOz   = vm.totalOz(stashBags)
-        let unit      = appSettings.preferredUnit
-        let days      = vm.daysWorth(stashBags, dailyOz: appSettings.dailyOzGoal)
-        let ziplocks  = vm.ziplockCount(stashBags)
-        let milkBags  = vm.totalMilkBagCount(stashBags)
+    private var headerArea: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                FFEyebrow(text: dateHeader)
+                Spacer()
+                Button {
+                    // bell action — placeholder
+                } label: {
+                    Image(systemName: "bell")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(Color.ffInk3)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Notifications")
+            }
+            Text("Hello, friend")
+                .font(.system(size: 34, weight: .regular, design: .serif))
+                .foregroundStyle(Color.ffInk)
 
-        return ZStack(alignment: .topTrailing) {
-            // Background gradient
+            FFEyebrow(text: "YOUR STASH TODAY")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 4)
+    }
+
+    // MARK: - Hero Card
+
+    private var heroCard: some View {
+        ZStack(alignment: .topTrailing) {
+            // Base warm gradient
             LinearGradient(
-                colors: [Color.milkIndigo, Color.milkIndigo.opacity(0.75)],
+                colors: [Color.ffSurface, Color.ffSurface2],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             )
-            .clipShape(RoundedRectangle(cornerRadius: 20))
 
-            // Decorative circles
-            Circle()
-                .fill(Color.white.opacity(0.06))
-                .frame(width: 160)
-                .offset(x: 60, y: -40)
-            Circle()
-                .fill(Color.white.opacity(0.04))
-                .frame(width: 100)
-                .offset(x: 20, y: 60)
+            // Terracotta radial top-right accent
+            RadialGradient(
+                colors: [Color.ffTerra.opacity(0.18), .clear],
+                center: .topTrailing,
+                startRadius: 0,
+                endRadius: 180
+            )
+
+            // Butter soft accent bottom-left
+            RadialGradient(
+                colors: [Color.ffButter.opacity(0.14), .clear],
+                center: .bottomLeading,
+                startRadius: 0,
+                endRadius: 140
+            )
 
             // Content
-            VStack(alignment: .leading, spacing: 16) {
-                // Header
-                HStack {
-                    Label("Your Stash", systemImage: "snowflake")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.85))
-                        .tracking(0.5)
-                    Spacer()
-                    if totalOz < appSettings.lowStashThresholdOz && ziplocks > 0 {
-                        Label("Low", systemImage: "exclamationmark.triangle.fill")
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(Color.milkWarn)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 4)
-                            .background(Color.milkWarn.opacity(0.2), in: Capsule())
-                    }
+            VStack(alignment: .leading, spacing: 18) {
+                // Label + snowflake
+                HStack(spacing: 6) {
+                    Image(systemName: "snowflake")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.ffTerra)
+                    Text("Your stash · \(String(format: "%.1f", days)) days")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.ffInk2)
                 }
 
-                // Big total
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(UnitConversion.formatted(totalOz, in: unit))
-                        .font(.system(size: 52, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                        .contentTransition(.numericText())
+                // Big serif oz number
+                Text(UnitConversion.formatted(totalOz, in: unit))
+                    .font(.system(size: 62, weight: .regular, design: .serif))
+                    .foregroundStyle(Color.ffInk)
+                    .contentTransition(.numericText())
 
-                    Text(String(format: "%.1f days worth  ·  %@/day", days,
-                         UnitConversion.formatted(appSettings.dailyOzGoal, in: unit)))
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.85))
-                }
+                // 14-day bar strip
+                dayStripView
 
-                // Count pills
-                HStack(spacing: 10) {
-                    StatPill(value: "\(ziplocks)", label: ziplocks == 1 ? "Ziplock" : "Ziplocks", icon: "bag.fill")
-                    StatPill(value: "\(milkBags)", label: milkBags == 1 ? "Milk Bag" : "Milk Bags", icon: "drop.fill")
+                // Bottom row: ziplock + bag counts
+                HStack(spacing: 14) {
+                    FFStatPill(value: "\(ziplocks)", label: ziplocks == 1 ? "Ziplock" : "Ziplocks", icon: "bag.fill", color: Color.ffTerra)
+                    FFStatPill(value: "\(milkBags)", label: milkBags == 1 ? "Milk Bag" : "Milk Bags", icon: "drop.fill", color: Color.ffInk3)
                 }
             }
             .padding(22)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity)
-        .shadow(color: Color.milkIndigo.opacity(0.35), radius: 12, x: 0, y: 4)
+        .clipShape(RoundedRectangle(cornerRadius: 26))
+        .overlay(RoundedRectangle(cornerRadius: 26).stroke(Color.ffLine, lineWidth: 0.5))
+        .shadow(color: Color.ffTerra.opacity(0.10), radius: 14, x: 0, y: 4)
     }
 
-    // MARK: - Stats Row
-
-    private var statsRow: some View {
-        let unit     = appSettings.preferredUnit
-        let totalOz  = vm.totalOz(stashBags)
-        let expiring = StashService.expiringSoon(bags: stashBags, within: 7).count
-
-        let oldest   = stashBags.filter { $0.status == .inStash }
-                                .sorted { $0.freezeDate < $1.freezeDate }
-                                .first
-
-        return HStack(spacing: 12) {
-            MiniStatCard(
-                icon: "calendar.badge.clock",
-                iconColor: Color.milkCoral,
-                title: "Oldest Bag",
-                value: oldest.map { DateFormatter.shortDate.string(from: $0.freezeDate) } ?? "—"
-            )
-            MiniStatCard(
-                icon: "clock.badge.exclamationmark",
-                iconColor: Color.milkWarn,
-                title: "Exp. Soon",
-                value: expiring == 0 ? "None" : "\(expiring) bag\(expiring == 1 ? "" : "s")"
-            )
-            MiniStatCard(
-                icon: "chart.bar.fill",
-                iconColor: Color.milkSage,
-                title: "Avg / Ziplock",
-                value: stashBags.isEmpty ? "—" : UnitConversion.formatted(
-                    totalOz / Double(max(stashBags.count, 1)), in: unit
-                )
-            )
+    // 14-day bar strip visualization
+    private var dayStripView: some View {
+        let cappedDays = min(Int(days), 14)
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 3) {
+                ForEach(0..<14, id: \.self) { idx in
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(idx < cappedDays ? Color.ffTerra : Color.ffLine)
+                        .frame(height: 18)
+                }
+            }
+            HStack {
+                Text("TODAY")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.ffInk3)
+                Spacer()
+                Text("2 WEEKS")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.ffInk3)
+            }
         }
     }
 
     // MARK: - Quick Actions
 
-    private var quickActionsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Quick Actions")
-
-            HStack(spacing: 12) {
-                QuickActionButton(title: "Add Ziplock", icon: "plus.circle.fill", color: Color.milkIndigo) {
-                    showAddBag = true
+    private var quickActionsRow: some View {
+        HStack(spacing: 12) {
+            // Primary: log session
+            Button { showAddBag = true } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 20))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Log a session")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("Add new Ziplock")
+                            .font(.system(size: 11))
+                            .opacity(0.8)
+                    }
+                    Spacer()
                 }
-                QuickActionButton(title: "Use Milk", icon: "drop.fill", color: Color.milkCoral) {
-                    showUseMilk = true
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(Color.ffTerra, in: RoundedRectangle(cornerRadius: 18))
+            }
+            .buttonStyle(.plain)
+
+            // Secondary: use milk
+            Button { showUseMilk = true } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "drop.fill")
+                        .font(.system(size: 20))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Use milk")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("FIFO dispense")
+                            .font(.system(size: 11))
+                            .opacity(0.8)
+                    }
+                    Spacer()
+                }
+                .foregroundStyle(Color.ffTerra)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: 18))
+                .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.ffLine, lineWidth: 0.5))
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - At a Glance
+
+    private var atAGlanceSection: some View {
+        let unit   = appSettings.preferredUnit
+        let oldest = stashBags.filter { $0.status == .inStash }
+                              .sorted { $0.freezeDate < $1.freezeDate }
+                              .first
+        let expiring7 = StashService.expiringSoon(bags: stashBags, within: 7).count
+        let avgOz     = stashBags.isEmpty ? 0.0
+                            : totalOz / Double(max(stashBags.count, 1))
+
+        return VStack(alignment: .leading, spacing: 12) {
+            FFEyebrow(text: "AT A GLANCE")
+
+            FFCard {
+                VStack(spacing: 0) {
+                    FFGlanceRow(
+                        icon: "calendar.badge.clock",
+                        iconBg: Color.ffTerraSoft,
+                        iconColor: Color.ffTerra,
+                        label: "Oldest bag",
+                        value: oldest.map { DateFormatter.shortDate.string(from: $0.freezeDate) } ?? "—",
+                        detail: oldest.map { "\(Calendar.current.dateComponents([.day], from: $0.freezeDate, to: Date()).day ?? 0)d ago" } ?? ""
+                    )
+                    FFDivider().padding(.leading, 52)
+
+                    FFGlanceRow(
+                        icon: "clock.badge.exclamationmark",
+                        iconBg: expiring7 > 0 ? Color.ffButterSoft : Color.ffSageSoft,
+                        iconColor: expiring7 > 0 ? Color.ffButter : Color.ffSage,
+                        label: "Expiring soon",
+                        value: expiring7 == 0 ? "None" : "\(expiring7) bag\(expiring7 == 1 ? "" : "s")",
+                        detail: "within 7 days"
+                    )
+                    FFDivider().padding(.leading, 52)
+
+                    FFGlanceRow(
+                        icon: "chart.bar.fill",
+                        iconBg: Color.ffSurface2,
+                        iconColor: Color.ffInk3,
+                        label: "Avg / Ziplock",
+                        value: stashBags.isEmpty ? "—" : UnitConversion.formatted(avgOz, in: unit),
+                        detail: "per bag"
+                    )
                 }
             }
         }
     }
 
-    // MARK: - Expiring Soon
+    // MARK: - Use Soon Section
 
-    private var expiringSoonSection: some View {
+    private var useSoonSection: some View {
         let expiring = vm.expiringSoon(stashBags)
 
         return VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                SectionHeader(title: "Expiring Soon")
+            HStack(alignment: .firstTextBaseline) {
+                FFEyebrow(text: "USE FIRST")
                 Spacer()
                 Picker("Within", selection: $vm.expiringSoonFilter) {
                     Text("7d").tag(7)
@@ -176,153 +308,97 @@ struct HomeView: View {
                 }
                 .pickerStyle(.segmented)
                 .frame(width: 130)
+                .scaleEffect(0.9)
             }
 
             if expiring.isEmpty {
-                HStack(spacing: 10) {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.title3)
-                        .foregroundStyle(Color.milkSage)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("All good!")
-                            .font(.subheadline.weight(.semibold))
-                        Text("No Ziplocks expiring within \(vm.expiringSoonFilter) days")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-                .padding(16)
-                .background(Color.milkSage.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+                FFEncouragement(
+                    message: "No Ziplocks expiring within \(vm.expiringSoonFilter) days. You're on track!",
+                    icon: "checkmark.seal.fill"
+                )
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(expiring.enumerated()), id: \.element.id) { idx, bag in
-                        ExpiringBagRow(bag: bag, allBags: stashBags, preferredUnit: appSettings.preferredUnit)
-                        if idx < expiring.count - 1 {
-                            Divider().padding(.leading, 16)
+                FFCard(padding: 0) {
+                    VStack(spacing: 0) {
+                        ForEach(Array(expiring.enumerated()), id: \.element.id) { idx, bag in
+                            FFExpiringRow(bag: bag, allBags: stashBags, preferredUnit: appSettings.preferredUnit)
+                            if idx < expiring.count - 1 {
+                                FFDivider().padding(.leading, 16)
+                            }
                         }
                     }
+                    .padding(.vertical, 4)
                 }
-                .background(Color.cardBg, in: RoundedRectangle(cornerRadius: 12))
-                .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 1)
-            }
-        }
-    }
-
-    // MARK: - Recently Added
-
-    private var recentlyAddedSection: some View {
-        let recent = stashBags
-            .filter { $0.status == .inStash }
-            .sorted { $0.freezeDate > $1.freezeDate }
-            .prefix(3)
-
-        return VStack(alignment: .leading, spacing: 12) {
-            SectionHeader(title: "Recently Added")
-
-            if recent.isEmpty {
-                Text("No bags in stash yet — tap Add Ziplock to get started.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(16)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Color.cardBg, in: RoundedRectangle(cornerRadius: 12))
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(recent.enumerated()), id: \.element.id) { idx, bag in
-                        RecentBagRow(bag: bag, preferredUnit: appSettings.preferredUnit)
-                        if idx < recent.count - 1 {
-                            Divider().padding(.leading, 56)
-                        }
-                    }
-                }
-                .background(Color.cardBg, in: RoundedRectangle(cornerRadius: 12))
-                .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 1)
             }
         }
     }
 }
 
-// MARK: - Supporting Views
+// MARK: - Supporting views
 
-struct SectionHeader: View {
-    let title: String
-    var body: some View {
-        Text(title)
-            .font(.headline)
-    }
-}
-
-struct StatPill: View {
+struct FFStatPill: View {
     let value: String
     let label: String
     let icon: String
+    let color: Color
 
     var body: some View {
         HStack(spacing: 5) {
             Image(systemName: icon)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(color)
             Text("\(value) \(label)")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.95))
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.ffInk2)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(.white.opacity(0.15), in: Capsule())
+        .background(Color.ffSurface2)
+        .clipShape(Capsule())
+        .overlay(Capsule().stroke(Color.ffLine, lineWidth: 0.5))
     }
 }
 
-struct MiniStatCard: View {
+struct FFGlanceRow: View {
     let icon: String
+    let iconBg: Color
     let iconColor: Color
-    let title: String
+    let label: String
     let value: String
+    let detail: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(iconColor)
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(iconBg)
+                    .frame(width: 36, height: 36)
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(iconColor)
+            }
 
-            VStack(alignment: .leading, spacing: 2) {
+            Text(label)
+                .font(.system(size: 15))
+                .foregroundStyle(Color.ffInk2)
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: 1) {
                 Text(value)
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .minimumScaleFactor(0.7)
-                    .lineLimit(1)
-                Text(title)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: 16, weight: .regular, design: .serif))
+                    .foregroundStyle(Color.ffInk)
+                if !detail.isEmpty {
+                    Text(detail)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.ffInk3)
+                }
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Color.cardBg, in: RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
+        .padding(.vertical, 12)
     }
 }
 
-struct CountBadge: View {
-    let value: String
-    let label: String
-    let color: Color
-
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundStyle(color)
-            Text(label)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.secondary)
-        }
-        .frame(width: 80, height: 52)
-        .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
-    }
-}
-
-struct ExpiringBagRow: View {
+struct FFExpiringRow: View {
     let bag: MilkBag
     let allBags: [MilkBag]
     let preferredUnit: MilkUnit
@@ -333,108 +409,54 @@ struct ExpiringBagRow: View {
             to: bag.expirationDate).day ?? 0
     }
     private var urgencyColor: Color {
-        daysLeft <= 3 ? .milkDanger : daysLeft <= 7 ? .milkWarn : .milkIndigo
+        daysLeft <= 3 ? Color.milkDanger : daysLeft <= 7 ? Color.ffButter : Color.ffTerra
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 3)
-                .fill(urgencyColor)
-                .frame(width: 4, height: 44)
+        HStack(spacing: 14) {
+            // Calendar block
+            VStack(spacing: 0) {
+                Text(DateFormatter.calMonth.string(from: bag.freezeDate).uppercased())
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 2)
+                    .background(urgencyColor)
+                Text(DateFormatter.calDay.string(from: bag.freezeDate))
+                    .font(.system(size: 18, weight: .bold, design: .serif))
+                    .foregroundStyle(urgencyColor)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 3)
+                    .background(urgencyColor.opacity(0.12))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .frame(width: 36)
 
             VStack(alignment: .leading, spacing: 3) {
                 let seq = StashService.sequenceLabel(for: bag, in: allBags)
-                Text(DateFormatter.freeze.string(from: bag.freezeDate))
-                    .font(.subheadline.weight(.semibold))
                 if !seq.isEmpty {
-                    Text(seq).font(.caption).foregroundStyle(.secondary)
+                    Text(seq)
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.ffInk3)
                 }
                 Text("\(bag.milkBagCount) bag\(bag.milkBagCount == 1 ? "" : "s") · \(UnitConversion.formatted(bag.volumePerBagOz, in: preferredUnit)) each")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.ffInk2)
             }
 
             Spacer()
 
             VStack(alignment: .trailing, spacing: 3) {
                 Text(UnitConversion.formatted(bag.totalVolumeOz, in: preferredUnit))
-                    .font(.subheadline.weight(.medium))
-                Text(daysLeft <= 0 ? "Today!" : "\(daysLeft)d left")
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 16, weight: .regular, design: .serif))
+                    .foregroundStyle(Color.ffInk)
+                Text(daysLeft <= 0 ? "TODAY" : "\(daysLeft)d left")
+                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(urgencyColor)
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-    }
-}
-
-struct RecentBagRow: View {
-    let bag: MilkBag
-    let preferredUnit: MilkUnit
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.milkIndigo.opacity(0.1))
-                    .frame(width: 40, height: 40)
-                Image(systemName: "snowflake")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.milkIndigo)
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(DateFormatter.freeze.string(from: bag.freezeDate))
-                    .font(.subheadline.weight(.semibold))
-                Text("\(bag.milkBagCount) bag\(bag.milkBagCount == 1 ? "" : "s") · \(UnitConversion.formatted(bag.volumePerBagOz, in: preferredUnit)) each")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if !bag.location.isEmpty {
-                    Text(bag.location + (bag.slotBin.isEmpty ? "" : " · \(bag.slotBin)"))
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 3) {
-                Text(UnitConversion.formatted(bag.totalVolumeOz, in: preferredUnit))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.milkIndigo)
-                if bag.isExpiringSoon(within: 14) {
-                    Text("Exp soon")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color.milkWarn)
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-    }
-}
-
-struct QuickActionButton: View {
-    let title: String
-    let icon: String
-    let color: Color
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 28, weight: .semibold))
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
-            .foregroundStyle(color)
-            .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(color.opacity(0.2), lineWidth: 1))
-        }
-        .buttonStyle(.plain)
     }
 }
 

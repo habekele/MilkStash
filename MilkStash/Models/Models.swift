@@ -29,12 +29,8 @@ final class MilkBag {
     // Volume per individual milk bag inside this Ziplock, stored in oz
     var volumePerBagOz: Double = 0
 
-    // How many individual milk bags are in this Ziplock (whole bags)
+    // How many individual milk bags are in this Ziplock
     var milkBagCount: Int = 1
-
-    // Independently tracked residual oz (from a partially used individual bag)
-    // e.g. you used half of one bag — that half is tracked here separately
-    var partialVolumeOz: Double = 0
 
     var displayUnit: String = "oz"     // "oz" or "mL" – what the user chose at entry
     var freezeDate: Date = Date()
@@ -49,7 +45,6 @@ final class MilkBag {
         volumePerBag: Double,
         unit: MilkUnit,
         milkBagCount: Int = 1,
-        partialVolumeOz: Double = 0,
         freezeDate: Date = Date(),
         expirationDate: Date,
         location: String = "",
@@ -61,7 +56,6 @@ final class MilkBag {
         self.id = UUID()
         self.volumePerBagOz = unit == .oz ? volumePerBag : volumePerBag / UnitConversion.mLPerOz
         self.milkBagCount = milkBagCount
-        self.partialVolumeOz = partialVolumeOz
         self.displayUnit = unit.rawValue
         self.freezeDate = freezeDate
         self.expirationDate = expirationDate
@@ -82,9 +76,8 @@ final class MilkBag {
         set { displayUnit = newValue.rawValue }
     }
 
-    /// Total oz in this Ziplock: (whole bags × volume each) + any partial remainder
     var totalVolumeOz: Double {
-        Double(milkBagCount) * volumePerBagOz + partialVolumeOz
+        Double(milkBagCount) * volumePerBagOz
     }
 
     /// Total volume in a given display unit
@@ -134,16 +127,89 @@ final class AppSettings {
 
     /// Target oz = goalMonths × 30 days × dailyOzGoal
     var goalTargetOz: Double {
-        Double(goalMonths) * 30.0 * dailyOzGoal
+        Double(goalMonths) * 30.0 * effectiveDailyOzGoal
     }
 
     var preferredUnit: MilkUnit {
         get { MilkUnit(rawValue: preferredUnitRaw) ?? .oz }
         set { preferredUnitRaw = newValue.rawValue }
     }
+
+    /// Canonical oz/day value used throughout the app.
+    /// Older builds stored raw user input, so this resolves legacy mL entries
+    /// without rewriting persisted data during upgrade.
+    var effectiveDailyOzGoal: Double {
+        if LegacySettingsCompatibility.shouldInterpretDailyGoalAsLegacyML(self) {
+            return UnitConversion.convert(dailyOzGoal, from: .mL, to: .oz)
+        }
+        return dailyOzGoal
+    }
+
+    /// Canonical oz threshold used for low-stash checks.
+    var effectiveLowStashThresholdOz: Double {
+        if LegacySettingsCompatibility.shouldInterpretLowThresholdAsLegacyML(self) {
+            return UnitConversion.convert(lowStashThresholdOz, from: .mL, to: .oz)
+        }
+        return lowStashThresholdOz
+    }
+
+    var dailyGoalDisplayValue: Double {
+        UnitConversion.convert(effectiveDailyOzGoal, from: .oz, to: preferredUnit)
+    }
+
+    var lowStashThresholdDisplayValue: Double {
+        UnitConversion.convert(effectiveLowStashThresholdOz, from: .oz, to: preferredUnit)
+    }
+
+    func setDailyGoalFromDisplayValue(_ value: Double) {
+        let canonicalThresholdOz = effectiveLowStashThresholdOz
+        dailyOzGoal = UnitConversion.convert(value, from: preferredUnit, to: .oz)
+        lowStashThresholdOz = canonicalThresholdOz
+        LegacySettingsCompatibility.markCanonicalStorageEnabled()
+    }
+
+    func setLowStashThresholdFromDisplayValue(_ value: Double) {
+        let canonicalDailyGoalOz = effectiveDailyOzGoal
+        dailyOzGoal = canonicalDailyGoalOz
+        lowStashThresholdOz = UnitConversion.convert(value, from: preferredUnit, to: .oz)
+        LegacySettingsCompatibility.markCanonicalStorageEnabled()
+    }
 }
 
 // MARK: - Unit Conversion
+
+private enum LegacySettingsCompatibility {
+    private static let canonicalStorageKey = "app_settings_canonical_oz_v1"
+
+    static func shouldInterpretDailyGoalAsLegacyML(_ settings: AppSettings) -> Bool {
+        guard !isCanonicalStorageEnabled else { return false }
+
+        // Daily intake above ~80 oz/day is implausible and strongly suggests
+        // a legacy mL value from older builds.
+        return settings.dailyOzGoal > 80
+    }
+
+    static func shouldInterpretLowThresholdAsLegacyML(_ settings: AppSettings) -> Bool {
+        guard !isCanonicalStorageEnabled else { return false }
+
+        // If the daily goal clearly looks like a legacy mL value, treat the
+        // paired threshold the same way. Otherwise only infer legacy mL when
+        // the user is still in mL mode and the threshold is unusually large.
+        if shouldInterpretDailyGoalAsLegacyML(settings) {
+            return true
+        }
+
+        return settings.preferredUnit == .mL && settings.lowStashThresholdOz > 160
+    }
+
+    static var isCanonicalStorageEnabled: Bool {
+        UserDefaults.standard.bool(forKey: canonicalStorageKey)
+    }
+
+    static func markCanonicalStorageEnabled() {
+        UserDefaults.standard.set(true, forKey: canonicalStorageKey)
+    }
+}
 
 enum UnitConversion {
     static let mLPerOz: Double = 29.5735

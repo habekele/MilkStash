@@ -8,24 +8,11 @@ struct GoalView: View {
     @Query private var settings: [AppSettings]
     @Query(filter: #Predicate<MilkBag> { $0.statusRaw == "In Stash" })
     private var stashBags: [MilkBag]
+    @Query private var allBags: [MilkBag]
     @Environment(\.modelContext) private var context
 
-    // Single source of truth — never recreated once inserted
-    private var s: AppSettings {
-        settings.first ?? ensureSettings()
-    }
+    private var s: AppSettings { settings.first ?? AppSettings() }
 
-    @discardableResult
-    private func ensureSettings() -> AppSettings {
-        // Only insert if truly empty — avoids creating duplicates
-        if let existing = settings.first { return existing }
-        let fresh = AppSettings()
-        context.insert(fresh)
-        try? context.save()
-        return fresh
-    }
-
-    // Local edit state for the goal picker
     @State private var editingGoal = false
     @State private var draftMonths = 3
 
@@ -42,40 +29,31 @@ struct GoalView: View {
         return min(currentOz / targetOz, 1.0)
     }
 
-    private var ozRemaining: Double {
-        max(targetOz - currentOz, 0)
-    }
-
+    private var ozRemaining: Double { max(targetOz - currentOz, 0) }
     private var isGoalReached: Bool { currentOz >= targetOz }
 
-    /// Rolling 2-week average: oz added in the last 14 days ÷ number of days with data.
-    /// Falls back to all-time average if no bags were frozen in the last 14 days.
     private var dailyBuildRate: Double {
-        guard !stashBags.isEmpty else { return 0 }
         let cal = Calendar.current
         let twoWeeksAgo = cal.date(byAdding: .day, value: -14, to: Date()) ?? Date()
-        let recentBags = stashBags.filter { $0.freezeDate >= twoWeeksAgo }
+        let recentBags = allBags.filter { $0.freezeDate >= twoWeeksAgo }
 
         if !recentBags.isEmpty {
             let recentOz = recentBags.map(\.totalVolumeOz).reduce(0, +)
-            // Always divide by 14 — this is a 14-day rolling average.
-            // Using daysSpanned (days since earliest bag) caused spikes when
-            // all recent bags were added on the same day (daysSpanned = 1).
             return recentOz / 14.0
         }
 
-        // Fallback: all-time average if nothing frozen in last 2 weeks.
-        // Use a minimum of 30 days to prevent spikes when all bags share
-        // the same freeze date (e.g. user entered their whole stash at once).
-        guard let oldestDate = stashBags.map(\.freezeDate).min() else { return 0 }
+        guard !allBags.isEmpty,
+              let oldestDate = allBags.map(\.freezeDate).min() else { return 0 }
         let totalDays = max(cal.dateComponents([.day], from: oldestDate, to: Date()).day ?? 30, 30)
-        return currentOz / Double(totalDays)
+        let totalFrozenOz = allBags.map(\.totalVolumeOz).reduce(0, +)
+        return totalFrozenOz / Double(totalDays)
     }
 
-    /// Days until goal is reached at current build rate
+    private var weeklyBuildRate: Double { dailyBuildRate * 7.0 }
+
     private var daysUntilGoal: Int? {
         guard !isGoalReached else { return 0 }
-        guard dailyBuildRate > 0.01 else { return nil }  // nil = can't estimate
+        guard dailyBuildRate > 0.01 else { return nil }
         return Int(ceil(ozRemaining / dailyBuildRate))
     }
 
@@ -84,48 +62,67 @@ struct GoalView: View {
         return Calendar.current.date(byAdding: .day, value: days, to: Date())
     }
 
+    // Last 14 days: oz per day slot (one value per day)
+    private var last14DayAmounts: [Double] {
+        var result = Array(repeating: 0.0, count: 14)
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        for bag in allBags {
+            let bagDay = cal.startOfDay(for: bag.freezeDate)
+            let diff = cal.dateComponents([.day], from: bagDay, to: today).day ?? 0
+            if diff >= 0 && diff < 14 {
+                result[13 - diff] += bag.totalVolumeOz
+            }
+        }
+        return result
+    }
+
+    private var milestoneDefs: [(oz: Double, label: String)] {
+        [
+            (100,           "First 100 oz"),
+            (s.effectiveDailyOzGoal * 14, "Two weeks of supply"),
+            (s.effectiveDailyOzGoal * 30, "One month of supply"),
+            (s.goalTargetOz,     "\(s.goalMonths) months · \(String(format: "%.0f", s.goalTargetOz)) oz"),
+        ]
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
-                    goalHeroCard
-                    statsGrid
-                    buildRateCard
-                    changeGoalButton
+                VStack(spacing: 20) {
+                    headerArea
+                    progressArcCard
+                    FFEncouragement(
+                        message: isGoalReached
+                            ? "Goal reached! Your baby is well stocked."
+                            : "Every session counts. You're building something wonderful."
+                    )
+                    buildRateSection
+                    milestonesSection
+                    goalAdjustPanel
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 32)
-                .frame(maxWidth: 700)
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+                .padding(.bottom, 100)
             }
-            .background(Color(.systemGroupedBackground))
-            .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Goal")
-            .navigationBarTitleDisplayMode(.large)
+            .background(Color.ffBg.ignoresSafeArea())
+            .navigationBarHidden(true)
             .sheet(isPresented: $editingGoal) {
                 GoalSetupSheet(
                     currentMonths: s.goalMonths,
-                    dailyOz: s.dailyOzGoal
+                    dailyOz: s.effectiveDailyOzGoal
                 ) { months in
-                    // Fetch fresh from context — avoids stale closure capture
-                    let descriptor = FetchDescriptor<AppSettings>()
-                    let all = (try? context.fetch(descriptor)) ?? []
-                    let target: AppSettings
-                    if let existing = all.first {
-                        target = existing
-                    } else {
-                        target = AppSettings()
-                        context.insert(target)
-                    }
+                    let target = settings.first ?? {
+                        let fresh = AppSettings(); context.insert(fresh); return fresh
+                    }()
                     target.goalMonths    = months
                     target.goalStartDate = Date()
                     target.goalStartOz   = currentOz
-                    try? context.save()
+                    do { try context.save() } catch { print("GoalView: save failed:", error) }
                 }
             }
             .onAppear {
                 draftMonths = s.goalMonths
-                // If never set up, open the sheet automatically
                 if s.goalMonths == 3 && s.goalStartOz == 0 && stashBags.isEmpty {
                     editingGoal = true
                 }
@@ -133,240 +130,278 @@ struct GoalView: View {
         }
     }
 
-    // MARK: - Hero Card
+    // MARK: - Header
 
-    private var goalHeroCard: some View {
-        ZStack {
-            LinearGradient(
-                colors: isGoalReached
-                    ? [Color.milkSage, Color.milkSage.opacity(0.75)]
-                    : [Color.milkIndigo, Color.milkIndigo.opacity(0.75)],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 20))
+    private var headerArea: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            FFEyebrow(text: "BUILDING TOWARD \(s.goalMonths) MONTHS")
+            Text("Your journey")
+                .font(.system(size: 34, weight: .regular, design: .serif))
+                .foregroundStyle(Color.ffInk)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 4)
+    }
 
-            // Decorative circles
-            Circle().fill(Color.white.opacity(0.06)).frame(width: 180).offset(x: 70, y: -50)
-            Circle().fill(Color.white.opacity(0.04)).frame(width: 110).offset(x: -40, y: 60)
+    // MARK: - Progress Arc Card
 
-            VStack(alignment: .leading, spacing: 20) {
+    private var progressArcCard: some View {
+        FFCard {
+            VStack(spacing: 16) {
+                FFEyebrow(text: "YOU ARE HERE")
 
-                // Row 1: goal label + target badge
+                // Semicircular arc
+                ZStack {
+                    FFProgressArc(progress: 1, color: Color.ffLine)
+                    FFProgressArc(progress: progress, color: isGoalReached ? Color.ffSage : Color.ffTerra)
+
+                    // Center text
+                    VStack(spacing: 4) {
+                        Spacer().frame(height: 40)
+                        Text(String(format: "%.0f%%", progress * 100))
+                            .font(.system(size: 48, weight: .regular, design: .serif))
+                            .foregroundStyle(Color.ffInk)
+                            .contentTransition(.numericText())
+                        Text("of your goal")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.ffInk3)
+                    }
+                }
+                .frame(height: 160)
+
+                // Oz labels beneath arc
                 HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(isGoalReached ? "🎉 Goal Reached!" : "Supply Goal")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.9))
-                            .tracking(0.5)
-                        Text("\(s.goalMonths) month\(s.goalMonths == 1 ? "" : "s") of supply")
-                            .font(.title2.weight(.bold))
-                            .foregroundStyle(.white)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(UnitConversion.formatted(currentOz, in: s.preferredUnit))
+                            .font(.system(size: 15, weight: .semibold, design: .serif))
+                            .foregroundStyle(Color.ffTerra)
+                        Text("current")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Color.ffInk3)
                     }
                     Spacer()
-                    VStack(spacing: 2) {
-                        Text(UnitConversion.formatted(targetOz, in: s.preferredUnit, decimals: 0))
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                        Text("target")
-                            .font(.caption2)
-                            .foregroundStyle(.white.opacity(0.85))
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(.white.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
-                }
-
-                // Row 2: BIG day countdown
-                if isGoalReached {
-                    Text("You did it! 🥛")
-                        .font(.system(size: 44, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                } else if let days = daysUntilGoal {
-                    HStack(alignment: .lastTextBaseline, spacing: 6) {
-                        Text("\(days)")
-                            .font(.system(size: 72, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .contentTransition(.numericText())
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("days")
-                                .font(.title3.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.9))
-                            Text("until goal")
-                                .font(.caption)
-                                .foregroundStyle(.white.opacity(0.85))
+                    if let days = daysUntilGoal, days > 0 {
+                        VStack(spacing: 2) {
+                            Text("\(days)d left")
+                                .font(.system(size: 15, weight: .semibold, design: .serif))
+                                .foregroundStyle(Color.ffInk2)
                             if let date = estimatedDate {
                                 Text(DateFormatter.goalDate.string(from: date))
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.white.opacity(0.85))
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(Color.ffInk3)
                             }
                         }
+                    } else if isGoalReached {
+                        Text("Reached!")
+                            .font(.system(size: 15, weight: .semibold, design: .serif))
+                            .foregroundStyle(Color.ffSage)
                     }
-                } else {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Tracking…")
-                            .font(.system(size: 32, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                        Text("Add more bags so we can estimate your timeline.")
-                            .font(.caption)
-                            .foregroundStyle(.white.opacity(0.85))
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(UnitConversion.formatted(targetOz, in: s.preferredUnit, decimals: 0))
+                            .font(.system(size: 15, weight: .semibold, design: .serif))
+                            .foregroundStyle(Color.ffInk2)
+                        Text("goal")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(Color.ffInk3)
                     }
                 }
+            }
+        }
+    }
 
-                // Row 3: Progress bar
-                VStack(alignment: .leading, spacing: 8) {
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.white.opacity(0.2))
-                                .frame(height: 14)
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color.white)
-                                .frame(width: max(geo.size.width * progress, 14), height: 14)
-                                .animation(.spring(response: 0.6), value: progress)
+    // MARK: - Build Rate
+
+    private var buildRateSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FFEyebrow(text: "LAST 14 DAYS")
+
+            FFCard {
+                VStack(alignment: .leading, spacing: 14) {
+                    // Headline avg
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(UnitConversion.formatted(weeklyBuildRate, in: s.preferredUnit))
+                            .font(.system(size: 32, weight: .regular, design: .serif))
+                            .foregroundStyle(Color.ffInk)
+                        Text("/week avg")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.ffInk3)
+                        Spacer()
+                        if weeklyBuildRate > 0 {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Color.ffSage)
                         }
                     }
-                    .frame(height: 14)
 
-                    HStack {
-                        Text(UnitConversion.formatted(currentOz, in: s.preferredUnit))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.white.opacity(0.85))
-                        Spacer()
-                        Text(String(format: "%.0f%%", progress * 100))
-                            .font(.caption.weight(.bold))
-                            .foregroundStyle(.white)
+                    // 14-day bar chart
+                    let amounts = last14DayAmounts
+                    let maxAmt = amounts.max() ?? 1.0
+
+                    VStack(spacing: 6) {
+                        HStack(alignment: .bottom, spacing: 3) {
+                            ForEach(0..<14, id: \.self) { idx in
+                                let ratio = maxAmt > 0 ? amounts[idx] / maxAmt : 0
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(idx == 13 ? Color.ffTerra : Color.ffTerra.opacity(0.3))
+                                    .frame(height: max(CGFloat(ratio) * 60, 4))
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .frame(height: 64)
+
+                        HStack {
+                            Text("2 WKS AGO")
+                                .font(.system(size: 8, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Color.ffInk3)
+                            Spacer()
+                            Text("TODAY")
+                                .font(.system(size: 8, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Color.ffInk3)
+                        }
                     }
                 }
             }
-            .padding(22)
-        }
-        .frame(maxWidth: .infinity)
-        .shadow(color: Color.milkIndigo.opacity(0.35), radius: 12, x: 0, y: 4)
-    }
-
-    // MARK: - Stats Grid
-
-    private var statsGrid: some View {
-        HStack(spacing: 12) {
-            GoalStatCard(
-                icon: "target",
-                iconColor: Color.milkCoral,
-                title: "Target",
-                value: UnitConversion.formatted(targetOz, in: s.preferredUnit, decimals: 0)
-            )
-            GoalStatCard(
-                icon: "drop.fill",
-                iconColor: Color.milkIndigo,
-                title: "Current",
-                value: UnitConversion.formatted(currentOz, in: s.preferredUnit)
-            )
-            GoalStatCard(
-                icon: "arrow.up.circle.fill",
-                iconColor: Color.milkSage,
-                title: "Remaining",
-                value: isGoalReached ? "Done! 🎉" : UnitConversion.formatted(ozRemaining, in: s.preferredUnit)
-            )
         }
     }
 
-    // MARK: - Build Rate Card
+    // MARK: - Milestones
 
-    private var buildRateCard: some View {
-        VStack(spacing: 0) {
+    private var milestonesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            FFEyebrow(text: "MILESTONES")
+
+            FFCard(padding: 0) {
+                VStack(spacing: 0) {
+                    ForEach(Array(milestoneDefs.enumerated()), id: \.offset) { idx, def in
+                        let done = currentOz >= def.oz
+                        let isCurrent = !done && (idx == 0 || currentOz >= milestoneDefs[idx - 1].oz)
+
+                        HStack(spacing: 14) {
+                            // Indicator
+                            ZStack {
+                                Circle()
+                                    .fill(done ? Color.ffSageSoft
+                                               : isCurrent ? Color.ffTerraSoft
+                                               : Color.ffSurface2)
+                                    .frame(width: 28, height: 28)
+                                Image(systemName: done ? "checkmark" : isCurrent ? "circle.fill" : "circle")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(done ? Color.ffSage
+                                                          : isCurrent ? Color.ffTerra
+                                                          : Color.ffInk4)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(def.label)
+                                        .font(.system(size: 14, weight: done ? .regular : .semibold))
+                                        .foregroundStyle(done ? Color.ffInk3 : Color.ffInk)
+                                        .strikethrough(done, color: Color.ffInk3)
+
+                                    if isCurrent {
+                                        Text("NEXT")
+                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(Color.ffTerra)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(Color.ffTerraSoft)
+                                            .clipShape(Capsule())
+                                    }
+                                }
+                                Text(UnitConversion.formatted(def.oz, in: s.preferredUnit, decimals: 0))
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(Color.ffInk3)
+                            }
+
+                            Spacer()
+
+                            if done {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(Color.ffSage)
+                                    .font(.system(size: 16))
+                            }
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+
+                        if idx < milestoneDefs.count - 1 {
+                            FFDivider().padding(.leading, 60)
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    // MARK: - Goal Adjust Panel
+
+    private var goalAdjustPanel: some View {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Your Build Rate", systemImage: "flame.fill")
-                    .font(.headline)
+                VStack(alignment: .leading, spacing: 4) {
+                    FFEyebrow(text: "YOUR GOAL")
+                    Text("\(s.goalMonths) month\(s.goalMonths == 1 ? "" : "s") of supply")
+                        .font(.system(size: 18, weight: .regular, design: .serif))
+                        .foregroundStyle(Color.ffInk)
+                    Text(UnitConversion.formatted(targetOz, in: s.preferredUnit, decimals: 0) + " target")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Color.ffInk3)
+                }
+
                 Spacer()
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 16)
 
-            Divider()
-
-            HStack(spacing: 0) {
-                BuildRateStat(
-                    value: dailyBuildRate > 0.01
-                        ? UnitConversion.formatted(dailyBuildRate, in: s.preferredUnit)
-                        : "—",
-                    label: "per day"
-                )
-                Divider().frame(height: 60)
-                BuildRateStat(
-                    value: dailyBuildRate > 0.01
-                        ? UnitConversion.formatted(dailyBuildRate * 7, in: s.preferredUnit)
-                        : "—",
-                    label: "per week"
-                )
-                Divider().frame(height: 60)
-                BuildRateStat(
-                    value: s.dailyOzGoal > 0
-                        ? UnitConversion.formatted(s.dailyOzGoal, in: s.preferredUnit, decimals: 0) + "/day"
-                        : "—",
-                    label: "baby drinks"
-                )
-            }
-            .padding(.vertical, 16)
-
-            // Formula explanation
-            Divider()
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    Image(systemName: "info.circle")
-                        .font(.caption)
-                        .foregroundStyle(Color.milkIndigo)
-                    Text("Goal = \(s.goalMonths) mo × 30 days × \(UnitConversion.formatted(s.dailyOzGoal, in: s.preferredUnit, decimals: 0))/day = \(UnitConversion.formatted(targetOz, in: s.preferredUnit, decimals: 0))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                Button {
+                    draftMonths = s.goalMonths
+                    editingGoal = true
+                } label: {
+                    Text("Adjust")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.ffTerra)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(Color.ffTerraSoft)
+                        .clipShape(Capsule())
                 }
-                HStack(spacing: 4) {
-                    Image(systemName: "calendar")
-                        .font(.caption)
-                        .foregroundStyle(Color.milkIndigo)
-                    let cal = Calendar.current
-                    let twoWeeksAgo = cal.date(byAdding: .day, value: -14, to: Date()) ?? Date()
-                    let hasRecentBags = stashBags.contains { $0.freezeDate >= twoWeeksAgo }
-                    if hasRecentBags {
-                        let recentOz = stashBags.filter { $0.freezeDate >= twoWeeksAgo }.map(\.totalVolumeOz).reduce(0, +)
-                        Text("Rate = \(UnitConversion.formatted(recentOz, in: s.preferredUnit, decimals: 0)) added ÷ last 14 days")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if let oldest = stashBags.map(\.freezeDate).min() {
-                        Text("Rate = \(UnitConversion.formatted(currentOz, in: s.preferredUnit, decimals: 0)) ÷ days since \(DateFormatter.goalDate.string(from: oldest)) (no recent data)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Rate calculated from recent pumping activity")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.milkIndigo.opacity(0.05))
+            .padding(18)
+            .background(Color.ffSurface)
+            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .overlay(
+                RoundedRectangle(cornerRadius: 22)
+                    .stroke(style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+                    .foregroundStyle(Color.ffLine)
+            )
         }
-        .background(Color.cardBg, in: RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2)
     }
+}
 
-    // MARK: - Change Goal Button
+// MARK: - Progress Arc Shape
 
-    private var changeGoalButton: some View {
-        Button {
-            draftMonths = s.goalMonths
-            editingGoal = true
-        } label: {
-            Label("Change Goal", systemImage: "slider.horizontal.3")
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 16)
-                .foregroundStyle(Color.milkIndigo)
-                .background(Color.milkIndigo.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.milkIndigo.opacity(0.2), lineWidth: 1))
+struct FFProgressArc: View {
+    var progress: Double
+    var color: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+            let center = CGPoint(x: w / 2, y: h * 0.85)
+            let radius = min(w, h * 2) * 0.46
+            let startAngle = Angle.degrees(180)
+            let endAngle = Angle.degrees(180 + 180 * progress)
+
+            Path { path in
+                path.addArc(center: center,
+                            radius: radius,
+                            startAngle: startAngle,
+                            endAngle: endAngle,
+                            clockwise: false)
+            }
+            .stroke(color, style: StrokeStyle(lineWidth: 14, lineCap: .round))
         }
-        .buttonStyle(.plain)
     }
 }
 
@@ -393,107 +428,102 @@ struct GoalSetupSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 32) {
-                // Explainer
-                VStack(spacing: 8) {
-                    Image(systemName: "snowflake")
-                        .font(.system(size: 44, weight: .semibold))
-                        .foregroundStyle(Color.milkIndigo)
-                    Text("Set Your Supply Goal")
-                        .font(.title2.weight(.bold))
-                    Text("How many months of frozen supply do you want to build?")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding(.top, 24)
+            ZStack {
+                Color.ffBg.ignoresSafeArea()
 
-                // Month picker
-                VStack(spacing: 16) {
-                    Text("\(selectedMonths) month\(selectedMonths == 1 ? "" : "s")")
-                        .font(.system(size: 56, weight: .bold, design: .rounded))
-                        .foregroundStyle(Color.milkIndigo)
-                        .contentTransition(.numericText())
-
-                    Slider(value: Binding(
-                        get: { Double(selectedMonths) },
-                        set: { selectedMonths = Int($0) }
-                    ), in: 1...12, step: 1)
-                    .tint(Color.milkIndigo)
-                    .padding(.horizontal)
-
-                    HStack {
-                        Text("1 month")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text("12 months")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                VStack(spacing: 32) {
+                    VStack(spacing: 8) {
+                        Image(systemName: "snowflake")
+                            .font(.system(size: 44, weight: .semibold))
+                            .foregroundStyle(Color.ffTerra)
+                        Text("Set Your Supply Goal")
+                            .font(.system(size: 26, weight: .regular, design: .serif))
+                            .foregroundStyle(Color.ffInk)
+                        Text("How many months of frozen supply do you want to build?")
+                            .font(.subheadline)
+                            .foregroundStyle(Color.ffInk2)
+                            .multilineTextAlignment(.center)
                     }
-                    .padding(.horizontal)
-                }
+                    .padding(.top, 24)
 
-                // Calculated target
-                VStack(spacing: 12) {
-                    Divider()
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Your target")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text(String(format: "%.0f oz  /  %.0f mL",
-                                        targetOz, targetOz * UnitConversion.mLPerOz))
-                                .font(.title3.weight(.bold))
-                                .foregroundStyle(Color.milkIndigo)
+                    VStack(spacing: 16) {
+                        Text("\(selectedMonths) month\(selectedMonths == 1 ? "" : "s")")
+                            .font(.system(size: 56, weight: .regular, design: .serif))
+                            .foregroundStyle(Color.ffTerra)
+                            .contentTransition(.numericText())
+
+                        Slider(value: Binding(
+                            get: { Double(selectedMonths) },
+                            set: { selectedMonths = Int($0) }
+                        ), in: 1...12, step: 1)
+                        .tint(Color.ffTerra)
+                        .padding(.horizontal)
+
+                        HStack {
+                            Text("1 month").font(.caption).foregroundStyle(Color.ffInk3)
+                            Spacer()
+                            Text("12 months").font(.caption).foregroundStyle(Color.ffInk3)
                         }
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 4) {
-                            Text("Formula")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Text("\(selectedMonths) × 30 × \(String(format: "%.0f", dailyOz))")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                        .padding(.horizontal)
+                    }
+
+                    FFCard {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Your target")
+                                    .font(.caption)
+                                    .foregroundStyle(Color.ffInk3)
+                                Text(String(format: "%.0f oz  /  %.0f mL", targetOz, targetOz * UnitConversion.mLPerOz))
+                                    .font(.system(size: 18, weight: .regular, design: .serif))
+                                    .foregroundStyle(Color.ffTerra)
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 4) {
+                                Text("Formula")
+                                    .font(.caption)
+                                    .foregroundStyle(Color.ffInk3)
+                                Text("\(selectedMonths) × 30 × \(String(format: "%.0f", dailyOz))")
+                                    .font(.system(size: 13, design: .monospaced))
+                                    .foregroundStyle(Color.ffInk2)
+                            }
                         }
                     }
                     .padding(.horizontal)
-                    Divider()
 
                     Text("Based on \(String(format: "%.0f", dailyOz)) oz/day — change in Settings.")
                         .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
+                        .foregroundStyle(Color.ffInk3)
 
-                Spacer()
+                    Spacer()
 
-                // Save button
-                Button {
-                    onSave(selectedMonths)
-                    dismiss()
-                } label: {
-                    Text("Set Goal")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .foregroundStyle(.white)
-                        .background(Color.milkIndigo, in: RoundedRectangle(cornerRadius: 14))
+                    Button {
+                        onSave(selectedMonths)
+                        dismiss()
+                    } label: {
+                        Text("Set Goal")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .foregroundStyle(.white)
+                            .background(Color.ffTerra, in: RoundedRectangle(cornerRadius: 16))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal)
+                    .padding(.bottom, 24)
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal)
-                .padding(.bottom, 24)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .foregroundStyle(Color.ffTerra)
                 }
             }
         }
     }
 }
 
-// MARK: - Supporting Views
+// MARK: - Supporting Views (kept for compatibility)
 
 struct GoalStatCard: View {
     let icon: String
@@ -508,19 +538,19 @@ struct GoalStatCard: View {
                 .foregroundStyle(iconColor)
             VStack(alignment: .leading, spacing: 2) {
                 Text(value)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .font(.system(size: 14, weight: .regular, design: .serif))
+                    .foregroundStyle(Color.ffInk)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
                 Text(title)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.ffInk3)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(Color.cardBg, in: RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.05), radius: 4, x: 0, y: 1)
+        .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ffLine, lineWidth: 0.5))
     }
 }
 
@@ -531,13 +561,13 @@ struct BuildRateStat: View {
     var body: some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.system(size: 15, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
+                .font(.system(size: 15, weight: .regular, design: .serif))
+                .foregroundStyle(Color.ffInk)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
             Text(label)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.ffInk3)
         }
         .frame(maxWidth: .infinity)
     }

@@ -11,6 +11,7 @@ struct InventoryView: View {
     @Environment(\.modelContext) private var context
 
     @State private var vm = InventoryViewModel()
+    @State private var showSearch = false
     @State private var showAddBag = false
     @State private var editingBag: MilkBag? = nil
     @State private var bagToDelete: MilkBag? = nil
@@ -20,30 +21,48 @@ struct InventoryView: View {
     @State private var showFilters = false
 
     private var filteredBags: [MilkBag] { vm.filtered(allBags) }
+    private var stashBags: [MilkBag] { allBags.filter { $0.status == .inStash } }
+
+    // Summary counts
+    private var totalStashOz: Double { stashBags.map(\.totalVolumeOz).reduce(0, +) }
+    private var ziplockCount: Int    { stashBags.count }
+    private var bagCount: Int        { stashBags.map(\.milkBagCount).reduce(0, +) }
+
+    // Days threshold for "Use Soon" group — matches the expiring-soon filter chip
+    private let useSoonDays = 30
+
+    // Grouped lists
+    private var useSoonBags: [MilkBag] {
+        filteredBags.filter { $0.status == .inStash && $0.isExpiringSoon(within: useSoonDays) }
+    }
+    private var plentyBags: [MilkBag] {
+        filteredBags.filter { $0.status == .inStash && !$0.isExpiringSoon(within: useSoonDays) }
+    }
+    private var otherBags: [MilkBag] {
+        filteredBags.filter { $0.status != .inStash }
+    }
 
     var body: some View {
         NavigationStack {
-            Group {
-                if filteredBags.isEmpty {
-                    emptyState
-                } else {
-                    bagList
-                }
-            }
-            .frame(maxWidth: 700)
-            .frame(maxWidth: .infinity)
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Inventory")
-            .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $vm.searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search Ziplocks…")
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) { filterButton }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button { showAddBag = true } label: {
-                        Image(systemName: "plus").fontWeight(.semibold)
+            ScrollView {
+                VStack(spacing: 16) {
+                    headerSection
+                    if showSearch { searchBar }
+                    filterChipsRow
+                    sortRow
+
+                    if filteredBags.isEmpty {
+                        emptyState
+                    } else {
+                        groupedContent
                     }
                 }
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+                .padding(.bottom, 100)
             }
+            .background(Color.ffBg.ignoresSafeArea())
+            .navigationBarHidden(true)
             .sheet(isPresented: $showAddBag) { AddEditBagView(bag: nil) }
             .sheet(item: $editingBag) { bag in AddEditBagView(bag: bag) }
             .sheet(isPresented: $showFilters) {
@@ -59,7 +78,7 @@ struct InventoryView: View {
             .alert("Discard Ziplock?", isPresented: $showDiscardConfirm, presenting: bagToDiscard) { bag in
                 Button("Discard", role: .destructive) {
                     bag.status = .discarded
-                    try? context.save()
+                    do { try context.save() } catch { print("InventoryView: save failed:", error) }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { bag in
@@ -68,30 +87,187 @@ struct InventoryView: View {
         }
     }
 
-    // MARK: - Bag List
+    // MARK: - Header
 
-    private var bagList: some View {
-        List {
-            Section {
-                HStack {
-                    Text("Sort")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Picker("Sort", selection: $vm.sortOption) {
-                        ForEach(InventoryViewModel.SortOption.allCases, id: \.self) { opt in
-                            Text(opt.rawValue).tag(opt)
-                        }
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Button { showFilters = true } label: {
+                    Image(systemName: vm.hasActiveFilters
+                          ? "line.3.horizontal.decrease.circle.fill"
+                          : "line.3.horizontal.decrease.circle")
+                        .font(.system(size: 20))
+                        .foregroundStyle(vm.hasActiveFilters ? Color.ffTerra : Color.ffInk3)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Filter")
+
+                Spacer()
+
+                HStack(spacing: 16) {
+                    Button {
+                        showSearch.toggle()
+                        if !showSearch { vm.searchText = "" }
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 18))
+                            .foregroundStyle(showSearch ? Color.ffTerra : Color.ffInk3)
                     }
-                    .pickerStyle(.menu)
-                    .tint(Color.milkBlue)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Search")
+
+                    Button { showAddBag = true } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(Color.ffTerra)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Add Ziplock")
                 }
             }
-            .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
 
-            Section {
-                ForEach(filteredBags) { bag in
-                    BagRow(bag: bag, allBags: allBags, preferredUnit: appSettings.preferredUnit)
+            Text("The Stash")
+                .font(.system(size: 34, weight: .regular, design: .serif))
+                .foregroundStyle(Color.ffInk)
+
+            // Eyebrow with counts
+            let unit = appSettings.preferredUnit
+            FFEyebrow(text: "\(ziplockCount) ZIPLOCKS · \(bagCount) BAGS · \(UnitConversion.formatted(totalStashOz, in: unit))")
+        }
+    }
+
+    // MARK: - Search Bar
+
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15))
+                .foregroundStyle(Color.ffInk3)
+            TextField("Search by date, bin, or note…", text: $vm.searchText)
+                .font(.system(size: 15))
+                .foregroundStyle(Color.ffInk)
+                .tint(Color.ffTerra)
+            if !vm.searchText.isEmpty {
+                Button { vm.searchText = "" } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(Color.ffInk3)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.ffSurface)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ffLine, lineWidth: 0.5))
+    }
+
+    // MARK: - Filter Chips
+
+    private var filterChipsRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                FFFilterChip(label: "All", isActive: vm.filterStatus == nil && !vm.filterExpiringSoon) {
+                    vm.filterLocation = ""
+                    vm.filterBin = ""
+                    vm.filterStatus = nil
+                    vm.filterExpiringSoon = false
+                    vm.filterExpired = false
+                }
+                FFFilterChip(label: "Use soon", isActive: vm.filterExpiringSoon) {
+                    vm.filterExpiringSoon.toggle()
+                    if vm.filterExpiringSoon { vm.filterStatus = nil }
+                }
+                // Location chips from unique locations
+                let locs = vm.uniqueLocations(allBags)
+                ForEach(locs, id: \.self) { loc in
+                    FFFilterChip(label: loc, isActive: vm.filterLocation == loc) {
+                        vm.filterLocation = vm.filterLocation == loc ? "" : loc
+                    }
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    // MARK: - Sort Row
+
+    private var sortRow: some View {
+        HStack {
+            Image(systemName: "arrow.up.arrow.down")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.ffInk3)
+
+            Menu {
+                ForEach(InventoryViewModel.SortOption.allCases, id: \.self) { opt in
+                    Button(opt.rawValue) { vm.sortOption = opt }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Sorted by \(vm.sortOption.rawValue)")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.ffInk2)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color.ffInk3)
+                }
+            }
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            Text("\(filteredBags.count) items")
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(Color.ffInk3)
+        }
+    }
+
+    // MARK: - Grouped Content
+
+    private var groupedContent: some View {
+        VStack(spacing: 16) {
+            if !useSoonBags.isEmpty {
+                inventoryGroup(
+                    title: "USE SOON",
+                    dotColor: Color.ffTerra,
+                    bags: useSoonBags
+                )
+            }
+            if !plentyBags.isEmpty {
+                inventoryGroup(
+                    title: "PLENTY OF TIME",
+                    dotColor: Color.ffSage,
+                    bags: plentyBags
+                )
+            }
+            if !otherBags.isEmpty {
+                inventoryGroup(
+                    title: "OTHER",
+                    dotColor: Color.ffInk3,
+                    bags: otherBags
+                )
+            }
+        }
+    }
+
+    private func inventoryGroup(title: String, dotColor: Color, bags: [MilkBag]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Group header
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 7, height: 7)
+                FFEyebrow(text: title)
+            }
+
+            FFCard(padding: 0) {
+                VStack(spacing: 0) {
+                    ForEach(Array(bags.enumerated()), id: \.element.id) { idx, bag in
+                        FFInventoryRow(
+                            bag: bag,
+                            allBags: allBags,
+                            preferredUnit: appSettings.preferredUnit
+                        )
                         .contentShape(Rectangle())
                         .onTapGesture { editingBag = bag }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -104,21 +280,26 @@ struct InventoryView: View {
                                 bagToDiscard = bag
                                 showDiscardConfirm = true
                             } label: { Label("Discard", systemImage: "xmark.circle") }
-                            .tint(.orange)
+                            .tint(Color.ffButter)
                         }
                         .swipeActions(edge: .leading) {
                             if bag.status != .inStash {
                                 Button {
                                     bag.status = .inStash
-                                    try? context.save()
+                                    do { try context.save() } catch { print("InventoryView: save failed:", error) }
                                 } label: { Label("Restore", systemImage: "arrow.uturn.left") }
-                                .tint(Color.milkGreen)
+                                .tint(Color.ffSage)
                             }
                         }
+
+                        if idx < bags.count - 1 {
+                            FFDivider().padding(.leading, 16)
+                        }
+                    }
                 }
+                .padding(.vertical, 4)
             }
         }
-        .listStyle(.insetGrouped)
     }
 
     // MARK: - Empty State
@@ -127,127 +308,188 @@ struct InventoryView: View {
         VStack(spacing: 16) {
             Image(systemName: "tray.fill")
                 .font(.system(size: 56))
-                .foregroundStyle(Color.milkBlue.opacity(0.3))
+                .foregroundStyle(Color.ffTerra.opacity(0.3))
             Text(vm.searchText.isEmpty ? "No Ziplocks yet" : "No matching Ziplocks")
-                .font(.title3.weight(.semibold))
-            Text(vm.searchText.isEmpty ? "Tap + to add your first Ziplock" : "Try adjusting your search or filters")
+                .font(.system(size: 20, weight: .regular, design: .serif))
+                .foregroundStyle(Color.ffInk)
+            Text(vm.searchText.isEmpty
+                 ? "Tap + to add your first Ziplock"
+                 : "Try adjusting your search or filters")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.ffInk2)
                 .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Filter Button
-
-    private var filterButton: some View {
-        let isActive = !vm.filterLocation.isEmpty || !vm.filterBin.isEmpty
-            || vm.filterStatus != .inStash || vm.filterExpiringSoon || vm.filterExpired
-
-        return Button { showFilters = true } label: {
-            Label("Filters", systemImage: isActive
-                  ? "line.3.horizontal.decrease.circle.fill"
-                  : "line.3.horizontal.decrease.circle")
-            .foregroundStyle(isActive ? Color.milkBlue : .primary)
-        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 60)
     }
 
     private func delete(_ bag: MilkBag) {
         context.delete(bag)
-        try? context.save()
+        do { try context.save() } catch { print("InventoryView: save failed:", error) }
     }
 }
 
-// MARK: - BagRow
+// MARK: - InventoryViewModel extension for hasActiveFilters
 
-struct BagRow: View {
+extension InventoryViewModel {
+    var hasActiveFilters: Bool {
+        !filterLocation.isEmpty || !filterBin.isEmpty
+            || filterStatus != .inStash || filterExpiringSoon || filterExpired
+    }
+}
+
+// MARK: - Filter Chip
+
+struct FFFilterChip: View {
+    let label: String
+    let isActive: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(isActive ? Color.ffSurface : Color.ffInk2)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(isActive ? Color.ffInk : Color.ffSurface)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.ffLine, lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Inventory Row
+
+struct FFInventoryRow: View {
     let bag: MilkBag
     let allBags: [MilkBag]
     let preferredUnit: MilkUnit
 
     private var seq: String { StashService.sequenceLabel(for: bag, in: allBags) }
 
+    private var daysLeft: Int {
+        Calendar.current.dateComponents([.day],
+            from: Calendar.current.startOfDay(for: Date()),
+            to: bag.expirationDate).day ?? 0
+    }
+
+    private var statusColor: Color {
+        if bag.isExpired                  { return Color.milkDanger }
+        if bag.isExpiringSoon(within: 14) { return Color.ffButter }
+        if bag.status == .inStash         { return Color.ffSage }
+        return Color.ffInk3
+    }
+
     var body: some View {
         HStack(spacing: 12) {
-            statusDot
+            // Calendar block
+            let calColor = bag.isExpiringSoon(within: 14) ? Color.ffButter : Color.ffTerra
+            VStack(spacing: 0) {
+                Text(DateFormatter.calMonth.string(from: bag.freezeDate).uppercased())
+                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 2)
+                    .background(calColor)
+                Text(DateFormatter.calDay.string(from: bag.freezeDate))
+                    .font(.system(size: 16, weight: .bold, design: .serif))
+                    .foregroundStyle(calColor)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 2)
+                    .background(calColor.opacity(0.12))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 5))
+            .frame(width: 32)
 
             VStack(alignment: .leading, spacing: 4) {
-                // Primary: freeze date + sequence
+                // Ziplock label + partial badge
                 HStack(spacing: 6) {
-                    Text(DateFormatter.freeze.string(from: bag.freezeDate))
-                        .font(.subheadline.weight(.semibold))
-                    if !seq.isEmpty {
-                        Text(seq).font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-
-                // Milk bag count + volume each
-                HStack(spacing: 4) {
-                    Image(systemName: "bag.fill")
-                        .font(.caption2)
-                        .foregroundStyle(Color.milkBlue.opacity(0.7))
-                    Text("\(bag.milkBagCount) bag\(bag.milkBagCount == 1 ? "" : "s") × \(UnitConversion.formatted(bag.volumePerBagOz, in: preferredUnit))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(!seq.isEmpty ? seq : DateFormatter.freeze.string(from: bag.freezeDate))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.ffInk)
                     if bag.partialVolumeOz > 0.01 {
-                        Text("+ \(UnitConversion.formatted(bag.partialVolumeOz, in: preferredUnit)) partial")
-                            .font(.caption)
-                            .foregroundStyle(Color.milkWarn)
+                        Text("PARTIAL")
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(Color.ffButter)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Color.ffButterSoft)
+                            .clipShape(Capsule())
                     }
                 }
 
-                // Location secondary
-                if !bag.location.isEmpty {
-                    HStack(spacing: 4) {
-                        Image(systemName: "mappin.circle.fill")
-                            .font(.caption2)
-                            .foregroundStyle(Color.milkBlue.opacity(0.7))
-                        Text(bag.location + (bag.slotBin.isEmpty ? "" : " · \(bag.slotBin)"))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                // Bag count × volume
+                HStack(spacing: 4) {
+                    Text("\(bag.milkBagCount) × \(UnitConversion.formatted(bag.volumePerBagOz, in: preferredUnit))")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.ffInk2)
+                }
+
+                // Mini bag dots
+                if bag.milkBagCount > 0 {
+                    miniBagDots
                 }
 
                 // Tags
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     if bag.isExpired         { TagBadge("Expired", color: .milkDanger) }
                     else if bag.isExpiringSoon(within: 14) {
-                        let days = Calendar.current.dateComponents([.day],
-                            from: Calendar.current.startOfDay(for: Date()),
-                            to: bag.expirationDate).day ?? 0
-                        TagBadge("Exp \(days)d", color: .milkWarn)
+                        TagBadge("Exp \(max(daysLeft, 0))d", color: Color.ffButter)
                     }
-                    if bag.status == .used      { TagBadge("Used", color: .secondary) }
+                    if bag.status == .used      { TagBadge("Used", color: Color.ffInk3) }
                     if bag.status == .discarded { TagBadge("Discarded", color: .milkDanger) }
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 6)
 
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: 3) {
                 Text(UnitConversion.formatted(bag.totalVolumeOz, in: preferredUnit))
-                    .font(.subheadline.weight(.semibold))
+                    .font(.system(size: 17, weight: .regular, design: .serif))
+                    .foregroundStyle(Color.ffInk)
                     .monospacedDigit()
-                Text("Exp \(DateFormatter.expiry.string(from: bag.expirationDate))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Text("EXP \(DateFormatter.expiry.string(from: bag.expirationDate))")
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.ffInk3)
             }
 
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(Color(uiColor: .tertiaryLabel))
+                .foregroundStyle(Color.ffInk4)
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
 
-    private var statusDot: some View {
-        let color: Color = {
-            if bag.isExpired                    { return .milkDanger }
-            if bag.isExpiringSoon(within: 14)   { return .milkWarn }
-            if bag.status == .inStash           { return .milkGreen }
-            return .secondary
-        }()
-        return Circle().fill(color).frame(width: 8, height: 8)
+    private var miniBagDots: some View {
+        HStack(spacing: 3) {
+            let count = min(bag.milkBagCount, 10)
+            ForEach(0..<count, id: \.self) { _ in
+                let dotColor: Color = bag.isExpired ? Color.milkDanger
+                    : bag.isExpiringSoon(within: 14) ? Color.ffButter : Color.ffSage
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(dotColor.opacity(0.5))
+                    .frame(width: 8, height: 10)
+            }
+            if bag.milkBagCount > 10 {
+                Text("+\(bag.milkBagCount - 10)")
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundStyle(Color.ffInk3)
+            }
+        }
+    }
+}
+
+// Keep legacy BagRow for any references
+struct BagRow: View {
+    let bag: MilkBag
+    let allBags: [MilkBag]
+    let preferredUnit: MilkUnit
+
+    var body: some View {
+        FFInventoryRow(bag: bag, allBags: allBags, preferredUnit: preferredUnit)
     }
 }
 
@@ -325,7 +567,9 @@ struct FilterSortSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }.fontWeight(.semibold)
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
+                        .foregroundStyle(Color.ffTerra)
                 }
             }
         }

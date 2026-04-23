@@ -57,7 +57,10 @@ struct UseMilkView: View {
             .onChange(of: vm.unit)          { vm.updateRecommendation(bags: stashBags) }
             .onChange(of: vm.includeExpired){ vm.updateRecommendation(bags: stashBags) }
             .onChange(of: amountFocused)    { vm.isAmountFieldFocused = amountFocused }
-            .onAppear { vm.unit = appSettings.preferredUnit }
+            .onAppear {
+                vm.unit = appSettings.preferredUnit
+                vm.includeExpired = appSettings.includeExpiredInFIFO
+            }
             .alert("Confirm Use", isPresented: $vm.showConfirmAlert) {
                 Button("Confirm") {
                     vm.applyUse(context: context)
@@ -143,7 +146,7 @@ struct UseMilkView: View {
             }
             .buttonStyle(.plain)
 
-            if !vm.recommendation.isEmpty {
+            if !vm.recommendation.isEmpty && vm.canFulfill {
                 Button { vm.showConfirmAlert = true } label: {
                     Label("Confirm", systemImage: "checkmark.circle.fill")
                         .font(.headline)
@@ -261,32 +264,16 @@ struct FIFOItemRow: View {
                         .foregroundStyle(.secondary)
                 }
 
-                // What to take — milk bag count prominently shown
-                HStack(spacing: 6) {
-                    if item.wholeMilkBags > 0 {
-                        Label(
-                            "\(item.wholeMilkBags) milk bag\(item.wholeMilkBags == 1 ? "" : "s")",
-                            systemImage: "bag.fill"
-                        )
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.milkBlue)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.milkBlue.opacity(0.1), in: Capsule())
-                    }
-
-                    if item.partialOz > 0.01 {
-                        Label(
-                            "+ \(UnitConversion.formatted(item.partialOz, in: displayUnit)) partial",
-                            systemImage: "drop.halffull"
-                        )
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.milkWarn)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.milkWarn.opacity(0.1), in: Capsule())
-                    }
-                }
+                // What to take
+                Label(
+                    "\(item.wholeMilkBags) milk bag\(item.wholeMilkBags == 1 ? "" : "s")",
+                    systemImage: "bag.fill"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Color.milkBlue)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color.milkBlue.opacity(0.1), in: Capsule())
             }
 
             Spacer()
@@ -296,7 +283,7 @@ struct FIFOItemRow: View {
                 Text(UnitConversion.formatted(item.takeOz, in: displayUnit))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(item.isWholeZiplock ? Color.milkDanger : Color.milkBlue)
-                Text(item.isWholeZiplock ? "Whole Ziplock" : "Partial")
+                Text(item.isWholeZiplock ? "All bags" : "Some bags")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

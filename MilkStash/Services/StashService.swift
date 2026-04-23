@@ -54,20 +54,13 @@ struct StashService {
 
         for ziplock in eligible {
             guard remaining > 0 else { break }
-            let takeOz = min(ziplock.totalVolumeOz, remaining)
-
-            // Work out how many whole milk bags that corresponds to,
-            // and how much partial volume is left over
-            let wholeBagsNeeded = min(Int(takeOz / ziplock.volumePerBagOz), ziplock.milkBagCount)
-            let wholeOz = Double(wholeBagsNeeded) * ziplock.volumePerBagOz
-            let partialOz = takeOz - wholeOz  // leftover that comes from a partial bag
-
-            result.append(FIFOItem(
-                bag: ziplock,
-                takeOz: takeOz,
-                wholeMilkBags: wholeBagsNeeded,
-                partialOz: partialOz
-            ))
+            // Bags must be thawed whole — round up to cover the remaining need
+            let bagsNeeded = min(
+                Int(ceil(remaining / ziplock.volumePerBagOz)),
+                ziplock.milkBagCount
+            )
+            let takeOz = Double(bagsNeeded) * ziplock.volumePerBagOz
+            result.append(FIFOItem(bag: ziplock, takeOz: takeOz, wholeMilkBags: bagsNeeded))
             remaining -= takeOz
         }
 
@@ -91,34 +84,10 @@ struct StashService {
 
     static func applyUse(plan: [FIFOItem], context: ModelContext) throws {
         for item in plan {
-            let ziplock = item.bag
-
-            // Subtract whole milk bags
-            ziplock.milkBagCount -= item.wholeMilkBags
-
-            // Subtract partial oz from the partial tracker
-            // First consume any existing partial, then bite into a whole bag if needed
-            var partialToRemove = item.partialOz
-            if partialToRemove > 0 {
-                if ziplock.partialVolumeOz >= partialToRemove {
-                    ziplock.partialVolumeOz -= partialToRemove
-                } else {
-                    // Use up remaining partial, then open a whole bag
-                    partialToRemove -= ziplock.partialVolumeOz
-                    if ziplock.milkBagCount > 0 {
-                        ziplock.milkBagCount -= 1
-                        ziplock.partialVolumeOz = ziplock.volumePerBagOz - partialToRemove
-                    } else {
-                        ziplock.partialVolumeOz = 0
-                    }
-                }
-            }
-
-            // Mark Ziplock used if fully emptied
-            if ziplock.milkBagCount <= 0 && ziplock.partialVolumeOz < 0.01 {
-                ziplock.milkBagCount = 0
-                ziplock.partialVolumeOz = 0
-                ziplock.status = .used
+            item.bag.milkBagCount -= item.wholeMilkBags
+            if item.bag.milkBagCount <= 0 {
+                item.bag.milkBagCount = 0
+                item.bag.status = .used
             }
         }
         try context.save()
@@ -137,21 +106,12 @@ struct FIFOItem: Identifiable {
     let id = UUID()
     let bag: MilkBag
     let takeOz: Double
-    let wholeMilkBags: Int    // whole individual bags to remove
-    let partialOz: Double     // any additional partial oz beyond whole bags
+    let wholeMilkBags: Int
 
-    var isWholeZiplock: Bool { takeOz >= bag.totalVolumeOz - 0.001 }
+    var isWholeZiplock: Bool { wholeMilkBags >= bag.milkBagCount }
 
-    /// Human-readable description of what to take
     func takeDescription(unit: MilkUnit) -> String {
-        var parts: [String] = []
-        if wholeMilkBags > 0 {
-            parts.append("\(wholeMilkBags) milk bag\(wholeMilkBags == 1 ? "" : "s")")
-        }
-        if partialOz > 0.01 {
-            parts.append(UnitConversion.formatted(partialOz, in: unit) + " partial")
-        }
-        let ozTotal = UnitConversion.formatted(takeOz, in: unit)
-        return parts.joined(separator: " + ") + " (\(ozTotal))"
+        let bagStr = "\(wholeMilkBags) milk bag\(wholeMilkBags == 1 ? "" : "s")"
+        return "\(bagStr) (\(UnitConversion.formatted(takeOz, in: unit)))"
     }
 }

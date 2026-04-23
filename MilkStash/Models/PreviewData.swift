@@ -55,12 +55,11 @@ enum PreviewData {
             ctx.insert(bag)
         }
 
-        // One expiring soon (within 7 days), with a partial
+        // One expiring soon (within 7 days)
         let nearExpiry = MilkBag(
             volumePerBag: 4.0,
             unit: .oz,
             milkBagCount: 3,
-            partialVolumeOz: 2.0,
             freezeDate: freeze(175),
             expirationDate: cal.date(byAdding: .day, value: 4, to: today)!,
             location: "Deep Freezer",
