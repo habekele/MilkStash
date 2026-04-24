@@ -89,7 +89,7 @@ struct GoalView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: Space.xl) {
                     headerArea
                     progressArcCard
                     FFEncouragement(
@@ -101,9 +101,9 @@ struct GoalView: View {
                     milestonesSection
                     goalAdjustPanel
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 8)
-                .padding(.bottom, 100)
+                .padding(.horizontal, Space.screenPad)
+                .padding(.top, Space.s)
+                .padding(.bottom, Space.tabBarClearance)
             }
             .background(Color.ffBg.ignoresSafeArea())
             .navigationBarHidden(true)
@@ -157,7 +157,7 @@ struct GoalView: View {
 
                     // Center text
                     VStack(spacing: 4) {
-                        Spacer().frame(height: 40)
+                        Spacer().frame(height: 44)
                         Text(String(format: "%.0f%%", progress * 100))
                             .font(.system(size: 48, weight: .regular, design: .serif))
                             .foregroundStyle(Color.ffInk)
@@ -167,7 +167,8 @@ struct GoalView: View {
                             .foregroundStyle(Color.ffInk3)
                     }
                 }
-                .frame(height: 160)
+                .frame(height: 180)
+                .padding(.top, 12)
 
                 // Oz labels beneath arc
                 HStack {
@@ -243,7 +244,7 @@ struct GoalView: View {
                             ForEach(0..<14, id: \.self) { idx in
                                 let ratio = maxAmt > 0 ? amounts[idx] / maxAmt : 0
                                 RoundedRectangle(cornerRadius: 3)
-                                    .fill(idx == 13 ? Color.ffTerra : Color.ffTerra.opacity(0.3))
+                                    .fill(idx == 13 ? Color.ffTerra : Color.ffTerra.opacity(0.55))
                                     .frame(height: max(CGFloat(ratio) * 60, 4))
                                     .frame(maxWidth: .infinity)
                             }
@@ -284,9 +285,9 @@ struct GoalView: View {
                                     .fill(done ? Color.ffSageSoft
                                                : isCurrent ? Color.ffTerraSoft
                                                : Color.ffSurface2)
-                                    .frame(width: 28, height: 28)
+                                    .frame(width: 32, height: 32)
                                 Image(systemName: done ? "checkmark" : isCurrent ? "circle.fill" : "circle")
-                                    .font(.system(size: 12, weight: .semibold))
+                                    .font(.system(size: 13, weight: .semibold))
                                     .foregroundStyle(done ? Color.ffSage
                                                           : isCurrent ? Color.ffTerra
                                                           : Color.ffInk4)
@@ -297,7 +298,7 @@ struct GoalView: View {
                                     Text(def.label)
                                         .font(.system(size: 14, weight: done ? .regular : .semibold))
                                         .foregroundStyle(done ? Color.ffInk3 : Color.ffInk)
-                                        .strikethrough(done, color: Color.ffInk3)
+                                        .strikethrough(done, color: Color.ffInk2)
 
                                     if isCurrent {
                                         Text("NEXT")
@@ -389,7 +390,7 @@ struct FFProgressArc: View {
             let w = geo.size.width
             let h = geo.size.height
             let center = CGPoint(x: w / 2, y: h * 0.85)
-            let radius = min(w, h * 2) * 0.46
+            let radius = min(w, h * 2) * 0.42
             let startAngle = Angle.degrees(180)
             let endAngle = Angle.degrees(180 + 180 * progress)
 

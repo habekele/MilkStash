@@ -44,11 +44,11 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: Space.xl) {
                     headerArea
                     heroCard
                     if totalOz > 0 && totalOz < appSettings.effectiveLowStashThresholdOz {
-                        HStack(spacing: 10) {
+                        HStack(spacing: Space.s) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(Color.ffButter)
@@ -56,12 +56,12 @@ struct HomeView: View {
                                 .font(.system(size: 14, weight: .regular))
                                 .foregroundStyle(Color.ffInk2)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, Space.l)
+                        .padding(.vertical, Space.m)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.ffButterSoft)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ffButter.opacity(0.25), lineWidth: 0.5))
+                        .clipShape(RoundedRectangle(cornerRadius: Radius.l))
+                        .overlay(RoundedRectangle(cornerRadius: Radius.l).stroke(Color.ffButter.opacity(0.25), lineWidth: 0.5))
                     }
                     if weeklyDeltaOz > 0 {
                         FFEncouragement(
@@ -72,9 +72,9 @@ struct HomeView: View {
                     atAGlanceSection
                     useSoonSection
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 8)
-                .padding(.bottom, 100)   // room for floating tab bar
+                .padding(.horizontal, Space.screenPad)
+                .padding(.top, Space.s)
+                .padding(.bottom, Space.tabBarClearance)
             }
             .background(Color.ffBg.ignoresSafeArea())
             .navigationBarHidden(true)
@@ -163,11 +163,11 @@ struct HomeView: View {
                     FFStatPill(value: "\(milkBags)", label: milkBags == 1 ? "Milk Bag" : "Milk Bags", icon: "drop.fill", color: Color.ffInk3)
                 }
             }
-            .padding(22)
+            .padding(Space.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 26))
-        .overlay(RoundedRectangle(cornerRadius: 26).stroke(Color.ffLine, lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.hero))
+        .overlay(RoundedRectangle(cornerRadius: Radius.hero).stroke(Color.ffLine, lineWidth: 0.5))
         .shadow(color: Color.ffTerra.opacity(0.10), radius: 14, x: 0, y: 4)
     }
 
@@ -184,12 +184,12 @@ struct HomeView: View {
             }
             HStack {
                 Text("TODAY")
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color.ffInk3)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.ffInk2)
                 Spacer()
                 Text("2 WEEKS")
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
-                    .foregroundStyle(Color.ffInk3)
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(Color.ffInk2)
             }
         }
     }
@@ -197,7 +197,7 @@ struct HomeView: View {
     // MARK: - Quick Actions
 
     private var quickActionsRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Space.m) {
             // Primary: log session
             Button { showAddBag = true } label: {
                 HStack(spacing: 10) {
@@ -206,18 +206,24 @@ struct HomeView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Log a session")
                             .font(.system(size: 15, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                         Text("Add new Ziplock")
                             .font(.system(size: 11))
                             .opacity(0.8)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
-                    Spacer()
+                    Spacer(minLength: 0)
                 }
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
-                .background(Color.ffTerra, in: RoundedRectangle(cornerRadius: 18))
+                .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+                .background(Color.ffTerra, in: RoundedRectangle(cornerRadius: Radius.l))
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
 
             // Secondary: use milk
             Button { showUseMilk = true } label: {
@@ -227,19 +233,25 @@ struct HomeView: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Use milk")
                             .font(.system(size: 15, weight: .semibold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                         Text("FIFO dispense")
                             .font(.system(size: 11))
                             .opacity(0.8)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
-                    Spacer()
+                    Spacer(minLength: 0)
                 }
                 .foregroundStyle(Color.ffTerra)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
-                .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).stroke(Color.ffLine, lineWidth: 0.5))
+                .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+                .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: Radius.l))
+                .overlay(RoundedRectangle(cornerRadius: Radius.l).stroke(Color.ffLine, lineWidth: 0.5))
             }
             .buttonStyle(.plain)
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -367,13 +379,13 @@ struct FFGlanceRow: View {
     let detail: String
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: Space.m) {
             ZStack {
-                RoundedRectangle(cornerRadius: 10)
+                RoundedRectangle(cornerRadius: IconTile.radius)
                     .fill(iconBg)
-                    .frame(width: 36, height: 36)
+                    .frame(width: IconTile.size, height: IconTile.size)
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: IconTile.iconPt, weight: .semibold))
                     .foregroundStyle(iconColor)
             }
 
@@ -383,7 +395,7 @@ struct FFGlanceRow: View {
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 1) {
+            VStack(alignment: .trailing, spacing: 2) {
                 Text(value)
                     .font(.system(size: 16, weight: .regular, design: .serif))
                     .foregroundStyle(Color.ffInk)
@@ -394,7 +406,7 @@ struct FFGlanceRow: View {
                 }
             }
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, Space.m)
     }
 }
 
@@ -413,7 +425,7 @@ struct FFExpiringRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: Space.m) {
             // Calendar block
             VStack(spacing: 0) {
                 Text(DateFormatter.calMonth.string(from: bag.freezeDate).uppercased())
@@ -429,7 +441,7 @@ struct FFExpiringRow: View {
                     .padding(.vertical, 3)
                     .background(urgencyColor.opacity(0.12))
             }
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.s))
             .frame(width: 36)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -455,8 +467,8 @@ struct FFExpiringRow: View {
                     .foregroundStyle(urgencyColor)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Space.l)
+        .padding(.vertical, Space.m)
     }
 }
 

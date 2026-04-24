@@ -37,7 +37,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: 10) {
                     headerArea
                     displaySection
                     expirationSection
@@ -47,8 +47,8 @@ struct SettingsView: View {
                     footerText
                 }
                 .padding(.horizontal, 18)
-                .padding(.top, 8)
-                .padding(.bottom, 100)
+                .padding(.top, 4)
+                .padding(.bottom, 80)
             }
             .background(Color.ffBg.ignoresSafeArea())
             .navigationBarHidden(true)
@@ -90,9 +90,9 @@ struct SettingsView: View {
     private var displaySection: some View {
         settingsSection(title: "DISPLAY") {
             // Unit picker
-            HStack {
+            settingsRow {
                 settingsLabel(icon: "ruler", label: "Unit")
-                Spacer()
+            } value: {
                 Picker("Unit", selection: Binding(
                     get: { appSettings.preferredUnit },
                     set: { v in
@@ -111,12 +111,10 @@ struct SettingsView: View {
                 .tint(Color.ffTerra)
             }
 
-            FFDivider()
-
             // Appearance picker
-            HStack {
+            settingsRow {
                 settingsLabel(icon: "circle.lefthalf.filled", label: "Appearance")
-                Spacer()
+            } value: {
                 Picker("Appearance", selection: $appearanceMode) {
                     Text("Auto").tag("system")
                     Text("Light").tag("light")
@@ -154,7 +152,7 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        .padding(.vertical, 12)
+                        .padding(.vertical, 10)
                     }
                     .buttonStyle(.plain)
 
@@ -171,64 +169,71 @@ struct SettingsView: View {
     private var babySection: some View {
         settingsSection(title: "YOUR BABY") {
             // Daily intake
-            HStack {
+            settingsRow {
                 settingsLabel(icon: "drop.fill", label: "Daily intake")
-                Spacer()
-                TextField("25", text: $dailyOzText)
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-                    .focused($focusDailyOz)
-                    .frame(width: 60)
-                    .font(.system(size: 16, weight: .semibold, design: .serif))
-                    .foregroundStyle(Color.ffTerra)
-                    .onChange(of: dailyOzText) {
-                        if let val = Double(dailyOzText), val > 0 {
-                            mutateSettings { $0.setDailyGoalFromDisplayValue(val) }
+            } value: {
+                HStack(spacing: 6) {
+                    TextField("25", text: $dailyOzText)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .focused($focusDailyOz)
+                        .frame(width: 60)
+                        .font(.system(size: 16, weight: .semibold, design: .serif))
+                        .foregroundStyle(Color.ffTerra)
+                        .onChange(of: dailyOzText) {
+                            if let val = Double(dailyOzText), val > 0 {
+                                mutateSettings { $0.setDailyGoalFromDisplayValue(val) }
+                            }
                         }
-                    }
-                Text(appSettings.preferredUnit.rawValue + "/day")
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(Color.ffInk3)
-                    .frame(width: 50, alignment: .leading)
+                    Text(appSettings.preferredUnit.rawValue + "/day")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Color.ffInk3)
+                        .frame(width: 60, alignment: .leading)
+                }
+                .frame(width: 126, alignment: .trailing)
             }
 
-            FFDivider()
 
             // Low stash alert
-            HStack {
+            settingsRow {
                 settingsLabel(icon: "exclamationmark.triangle", label: "Low stash alert")
-                Spacer()
-                TextField("100", text: $thresholdText)
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-                    .focused($focusThreshold)
-                    .frame(width: 60)
-                    .font(.system(size: 16, weight: .semibold, design: .serif))
-                    .foregroundStyle(Color.ffTerra)
-                    .onChange(of: thresholdText) {
-                        if let val = Double(thresholdText), val > 0 {
-                            mutateSettings { $0.setLowStashThresholdFromDisplayValue(val) }
+            } value: {
+                HStack(spacing: 6) {
+                    TextField("100", text: $thresholdText)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                        .focused($focusThreshold)
+                        .frame(width: 60)
+                        .font(.system(size: 16, weight: .semibold, design: .serif))
+                        .foregroundStyle(Color.ffTerra)
+                        .onChange(of: thresholdText) {
+                            if let val = Double(thresholdText), val > 0 {
+                                mutateSettings { $0.setLowStashThresholdFromDisplayValue(val) }
+                            }
                         }
-                    }
-                Text(appSettings.preferredUnit.rawValue)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(Color.ffInk3)
-                    .frame(width: 50, alignment: .leading)
+                    Text(appSettings.preferredUnit.rawValue)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Color.ffInk3)
+                        .frame(width: 60, alignment: .leading)
+                }
+                .frame(width: 126, alignment: .trailing)
             }
 
-            FFDivider()
-
             // Goal duration (read-only display, edit via Journey tab)
-            HStack {
+            settingsRow {
                 settingsLabel(icon: "target", label: "Goal duration")
-                Spacer()
-                Text("\(appSettings.goalMonths) months")
-                    .font(.system(size: 16, weight: .semibold, design: .serif))
-                    .foregroundStyle(Color.ffTerra)
-                Text("→ Journey")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(Color.ffInk3)
-                    .padding(.leading, 4)
+            } value: {
+                HStack(spacing: 6) {
+                    Text("\(appSettings.goalMonths)")
+                        .font(.system(size: 16, weight: .semibold, design: .serif))
+                        .foregroundStyle(Color.ffTerra)
+                        .frame(width: 60, alignment: .trailing)
+                    Text("months")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Color.ffInk3)
+                        .frame(width: 60, alignment: .leading)
+                }
+                .frame(width: 126, alignment: .trailing)
             }
         }
     }
@@ -251,22 +256,23 @@ struct SettingsView: View {
 
     private var aboutSection: some View {
         settingsSection(title: "ABOUT") {
-            HStack {
+            settingsRow {
                 settingsLabel(icon: "arrow.left.arrow.right", label: "Unit conversion")
-                Spacer()
+            } value: {
                 Text("1 oz = 29.57 mL")
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundStyle(Color.ffInk3)
+                    .multilineTextAlignment(.trailing)
             }
 
-            FFDivider()
 
-            HStack {
+            settingsRow {
                 settingsLabel(icon: "info.circle", label: "App version")
-                Spacer()
+            } value: {
                 Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
                     .font(.system(size: 14, design: .monospaced))
                     .foregroundStyle(Color.ffInk3)
+                    .multilineTextAlignment(.trailing)
             }
         }
     }
@@ -287,11 +293,23 @@ struct SettingsView: View {
         title: String,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             FFEyebrow(text: title)
-            FFCard {
+            FFCard(padding: 12) {
                 content()
             }
+        }
+    }
+
+    private func settingsRow<Label: View, Value: View>(
+        @ViewBuilder label: () -> Label,
+        @ViewBuilder value: () -> Value
+    ) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            label()
+                .frame(maxWidth: .infinity, alignment: .leading)
+            value()
+                .frame(alignment: .trailing)
         }
     }
 

@@ -83,6 +83,40 @@ struct FFTabBar: View {
     }
 }
 
+// MARK: - Design System: Layout Tokens
+
+/// 8pt-based spacing scale (with 4pt half-steps). Use these everywhere instead of
+/// raw magic numbers so vertical/horizontal rhythm stays consistent.
+enum Space {
+    static let xs: CGFloat = 4
+    static let s:  CGFloat = 8
+    static let m:  CGFloat = 12
+    static let l:  CGFloat = 16
+    static let xl: CGFloat = 24
+    static let xxl: CGFloat = 32
+    /// Standard horizontal screen padding. Matches iOS system default feel.
+    static let screenPad: CGFloat = 20
+    /// Safe clearance above the floating tab bar.
+    static let tabBarClearance: CGFloat = 104
+}
+
+/// Four-tier corner radius scale. Small inline tiles, buttons/rows, cards, and hero.
+enum Radius {
+    static let xs: CGFloat = 6   // chart bars, mini dots
+    static let s:  CGFloat = 8   // calendar blocks, tiny tiles
+    static let m:  CGFloat = 12  // icon tiles, small menu backdrops
+    static let l:  CGFloat = 14  // buttons, rows, search bars, inner cards
+    static let xl: CGFloat = 20  // standard card
+    static let hero: CGFloat = 24 // hero card only
+}
+
+/// Square icon-tile used in list rows (At a Glance, milestones, etc.).
+enum IconTile {
+    static let size: CGFloat = 40
+    static let radius: CGFloat = Radius.m
+    static let iconPt: CGFloat = 16
+}
+
 // MARK: - Design System: Color Tokens
 
 extension Color {
@@ -137,8 +171,10 @@ extension Color {
     })
 
     // Quaternary / icons
-    static let ffInk4 = Color(UIColor { _ in
-        UIColor(red: 0.690, green: 0.627, blue: 0.565, alpha: 1)         // #B0A090
+    static let ffInk4 = Color(UIColor { t in
+        t.userInterfaceStyle == .dark
+            ? UIColor(red: 0.831, green: 0.753, blue: 0.659, alpha: 1)  // #D4C0A8
+            : UIColor(red: 0.690, green: 0.627, blue: 0.565, alpha: 1)  // #B0A090
     })
 
     // Terracotta (primary accent)
@@ -205,9 +241,9 @@ extension Color {
 /// Standard card container
 struct FFCard<Content: View>: View {
     let content: () -> Content
-    var padding: CGFloat = 18
+    var padding: CGFloat = Space.l
 
-    init(padding: CGFloat = 18, @ViewBuilder content: @escaping () -> Content) {
+    init(padding: CGFloat = Space.l, @ViewBuilder content: @escaping () -> Content) {
         self.padding = padding
         self.content = content
     }
@@ -216,8 +252,8 @@ struct FFCard<Content: View>: View {
         content()
             .padding(padding)
             .background(Color.ffSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 22))
-            .overlay(RoundedRectangle(cornerRadius: 22).stroke(Color.ffLine, lineWidth: 0.5))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.xl))
+            .overlay(RoundedRectangle(cornerRadius: Radius.xl).stroke(Color.ffLine, lineWidth: 0.5))
     }
 }
 
@@ -236,12 +272,12 @@ struct FFEncouragement: View {
                 .italic()
                 .foregroundStyle(Color.ffInk2)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, Space.l)
+        .padding(.vertical, Space.m)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.ffSageSoft)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ffSage.opacity(0.25), lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.l))
+        .overlay(RoundedRectangle(cornerRadius: Radius.l).stroke(Color.ffSage.opacity(0.25), lineWidth: 0.5))
     }
 }
 

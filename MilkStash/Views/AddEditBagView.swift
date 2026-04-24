@@ -38,7 +38,7 @@ struct AddEditBagView: View {
                     // Unit picker on its own line
                     HStack {
                         Text("Unit")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.ffInk2)
                         Spacer()
                         Picker("Unit", selection: $vm.unit) {
                             ForEach(MilkUnit.allCases, id: \.self) { u in
@@ -54,7 +54,7 @@ struct AddEditBagView: View {
                         HStack(spacing: 8) {
                             Text("Quick:")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.ffInk2)
                             ForEach([2.0, 3.0, 4.0, 5.0, 6.0], id: \.self) { preset in
                                 Button {
                                     vm.volumePerBagText = String(format: "%.0f", preset)
@@ -63,7 +63,7 @@ struct AddEditBagView: View {
                                         .font(.caption.weight(.semibold))
                                         .padding(.horizontal, 12)
                                         .padding(.vertical, 6)
-                                        .background(Color.milkCoral.opacity(0.1), in: Capsule())
+                                        .background(Color.milkCoral.opacity(0.14), in: Capsule())
                                         .foregroundStyle(Color.milkCoral)
                                 }
                                 .buttonStyle(.plain)
@@ -75,7 +75,7 @@ struct AddEditBagView: View {
                     // Volume per bag
                     HStack {
                         Text("Volume per bag")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.ffInk2)
                         Spacer()
                         TextField("0", text: $vm.volumePerBagText)
                             .keyboardType(.decimalPad)
@@ -84,13 +84,13 @@ struct AddEditBagView: View {
                             .font(.body.weight(.semibold))
                             .frame(width: 80)
                         Text(vm.unit.rawValue)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.ffInk2)
                     }
 
                     // Count of milk bags in this Ziplock
                     HStack {
                         Text("Milk bags in Ziplock")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.ffInk2)
                         Spacer()
                         // Stepper + text field combo
                         HStack(spacing: 8) {
@@ -159,10 +159,10 @@ struct AddEditBagView: View {
                     } else {
                         HStack {
                             Text("Expiration")
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.ffInk2)
                             Spacer()
                             Text(DateFormatter.freeze.string(from: computedExpiration))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(Color.ffInk2)
                         }
                     }
                 }
@@ -187,7 +187,7 @@ struct AddEditBagView: View {
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(Color.milkCoral)
                                     .padding(6)
-                                    .background(Color.milkCoral.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                                    .background(Color.milkCoral.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
                             }
                         }
                     }
@@ -210,7 +210,7 @@ struct AddEditBagView: View {
                                     .font(.caption.weight(.semibold))
                                     .foregroundStyle(Color.milkCoral)
                                     .padding(6)
-                                    .background(Color.milkCoral.opacity(0.1), in: RoundedRectangle(cornerRadius: 6))
+                                    .background(Color.milkCoral.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
                             }
                         }
                     }

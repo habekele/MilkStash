@@ -20,7 +20,7 @@ struct UseMilkView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
+                VStack(spacing: Space.l) {
                     amountInputCard
                     optionsCard
 
@@ -34,12 +34,13 @@ struct UseMilkView: View {
                         noRecommendationCard
                     }
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 40)
+                .padding(.horizontal, Space.screenPad)
+                .padding(.top, Space.s)
+                .padding(.bottom, Space.xl)
                 .frame(maxWidth: 700)
                 .frame(maxWidth: .infinity)
             }
-            .background(Color(.systemGroupedBackground))
+            .background(Color.ffBg)
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Use Milk")
             .navigationBarTitleDisplayMode(.inline)
@@ -106,12 +107,12 @@ struct UseMilkView: View {
                     Text("\(totalMilkBags) milk bags")
                 }
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.ffInk2)
             }
         }
-        .padding(20)
-        .background(Color.cardBg, in: RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2)
+        .padding(Space.l)
+        .background(Color.cardBg, in: RoundedRectangle(cornerRadius: Radius.xl))
+        .overlay(RoundedRectangle(cornerRadius: Radius.xl).stroke(Color.ffLine, lineWidth: 0.5))
     }
 
     // MARK: - Options
@@ -125,8 +126,9 @@ struct UseMilkView: View {
                     .font(.subheadline)
             }
         }
-        .padding(16)
-        .background(Color.cardBg, in: RoundedRectangle(cornerRadius: 14))
+        .padding(Space.l)
+        .background(Color.cardBg, in: RoundedRectangle(cornerRadius: Radius.xl))
+        .overlay(RoundedRectangle(cornerRadius: Radius.xl).stroke(Color.ffLine, lineWidth: 0.5))
     }
 
     // MARK: - Action Buttons
@@ -141,7 +143,7 @@ struct UseMilkView: View {
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
-                    .background(Color.milkBlue.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+                    .background(Color.milkBlue.opacity(0.12), in: RoundedRectangle(cornerRadius: Radius.l))
                     .foregroundStyle(Color.milkBlue)
             }
             .buttonStyle(.plain)
@@ -153,7 +155,7 @@ struct UseMilkView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
                         .background(vm.canFulfill ? Color.milkGreen : Color.milkWarn,
-                                    in: RoundedRectangle(cornerRadius: 14))
+                                    in: RoundedRectangle(cornerRadius: Radius.l))
                         .foregroundStyle(.white)
                 }
                 .buttonStyle(.plain)
@@ -178,7 +180,7 @@ struct UseMilkView: View {
                     let totalBags = vm.recommendation.map(\.wholeMilkBags).reduce(0, +)
                     Text("\(totalBags) milk bag\(totalBags == 1 ? "" : "s")")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.ffInk2)
                 }
             }
 
@@ -200,7 +202,8 @@ struct UseMilkView: View {
                     }
                 }
             }
-            .background(Color.cardBg, in: RoundedRectangle(cornerRadius: 12))
+            .background(Color.cardBg, in: RoundedRectangle(cornerRadius: Radius.xl))
+            .overlay(RoundedRectangle(cornerRadius: Radius.xl).stroke(Color.ffLine, lineWidth: 0.5))
         }
     }
 
@@ -208,19 +211,19 @@ struct UseMilkView: View {
         VStack(spacing: 8) {
             Image(systemName: "tray.fill")
                 .font(.system(size: 32))
-                .foregroundStyle(Color.milkWarn.opacity(0.5))
+                .foregroundStyle(Color.milkWarn.opacity(0.7))
             Text("No eligible Ziplocks found")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.ffInk2)
             if !vm.includeExpired {
                 Text("Try enabling 'Include Expired Bags'")
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Color.ffInk3)
             }
         }
         .frame(maxWidth: .infinity)
         .padding(24)
-        .background(Color.cardBg, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.cardBg, in: RoundedRectangle(cornerRadius: Radius.l))
     }
 }
 
@@ -235,12 +238,12 @@ struct FIFOItemRow: View {
     private var seq: String { StashService.sequenceLabel(for: item.bag, in: allBags) }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Space.m) {
             // Step circle
             ZStack {
                 Circle()
                     .fill(Color.milkBlue.opacity(0.12))
-                    .frame(width: 36, height: 36)
+                    .frame(width: IconTile.size, height: IconTile.size)
                 Text("\(stepNumber)")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(Color.milkBlue)
@@ -252,7 +255,7 @@ struct FIFOItemRow: View {
                     Text(DateFormatter.freeze.string(from: item.bag.freezeDate))
                         .font(.subheadline.weight(.semibold))
                     if !seq.isEmpty {
-                        Text(seq).font(.caption).foregroundStyle(.secondary)
+                        Text(seq).font(.caption).foregroundStyle(Color.ffInk2)
                     }
                     if item.bag.isExpired { TagBadge("Expired", color: .milkDanger) }
                 }
@@ -261,7 +264,7 @@ struct FIFOItemRow: View {
                 if !item.bag.location.isEmpty {
                     Text(item.bag.location + (item.bag.slotBin.isEmpty ? "" : " · \(item.bag.slotBin)"))
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.ffInk2)
                 }
 
                 // What to take
@@ -285,11 +288,11 @@ struct FIFOItemRow: View {
                     .foregroundStyle(item.isWholeZiplock ? Color.milkDanger : Color.milkBlue)
                 Text(item.isWholeZiplock ? "All bags" : "Some bags")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.ffInk2)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, Space.l)
+        .padding(.vertical, Space.m)
     }
 }
 

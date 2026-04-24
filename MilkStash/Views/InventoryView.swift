@@ -45,7 +45,7 @@ struct InventoryView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: Space.l) {
                     headerSection
                     if showSearch { searchBar }
                     filterChipsRow
@@ -57,9 +57,9 @@ struct InventoryView: View {
                         groupedContent
                     }
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 8)
-                .padding(.bottom, 100)
+                .padding(.horizontal, Space.screenPad)
+                .padding(.top, Space.s)
+                .padding(.bottom, Space.tabBarClearance)
             }
             .background(Color.ffBg.ignoresSafeArea())
             .navigationBarHidden(true)
@@ -155,11 +155,11 @@ struct InventoryView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, Space.m)
+        .padding(.vertical, Space.s + 2)
         .background(Color.ffSurface)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ffLine, lineWidth: 0.5))
+        .clipShape(RoundedRectangle(cornerRadius: Radius.l))
+        .overlay(RoundedRectangle(cornerRadius: Radius.l).stroke(Color.ffLine, lineWidth: 0.5))
     }
 
     // MARK: - Filter Chips
@@ -308,7 +308,7 @@ struct InventoryView: View {
         VStack(spacing: 16) {
             Image(systemName: "tray.fill")
                 .font(.system(size: 56))
-                .foregroundStyle(Color.ffTerra.opacity(0.3))
+                .foregroundStyle(Color.ffTerra.opacity(0.5))
             Text(vm.searchText.isEmpty ? "No Ziplocks yet" : "No matching Ziplocks")
                 .font(.system(size: 20, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
@@ -383,7 +383,7 @@ struct FFInventoryRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: Space.m) {
             // Calendar block
             let calColor = bag.isExpiringSoon(within: 14) ? Color.ffButter : Color.ffTerra
             VStack(spacing: 0) {
@@ -400,24 +400,15 @@ struct FFInventoryRow: View {
                     .padding(.vertical, 2)
                     .background(calColor.opacity(0.12))
             }
-            .clipShape(RoundedRectangle(cornerRadius: 5))
-            .frame(width: 32)
+            .clipShape(RoundedRectangle(cornerRadius: Radius.s))
+            .frame(width: 36)
 
             VStack(alignment: .leading, spacing: 4) {
-                // Ziplock label + partial badge
+                // Ziplock label
                 HStack(spacing: 6) {
                     Text(!seq.isEmpty ? seq : DateFormatter.freeze.string(from: bag.freezeDate))
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.ffInk)
-                    if bag.partialVolumeOz > 0.01 {
-                        Text("PARTIAL")
-                            .font(.system(size: 9, weight: .bold, design: .monospaced))
-                            .foregroundStyle(Color.ffButter)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(Color.ffButterSoft)
-                            .clipShape(Capsule())
-                    }
                 }
 
                 // Bag count × volume
@@ -457,10 +448,10 @@ struct FFInventoryRow: View {
 
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.ffInk4)
+                .foregroundStyle(Color.ffInk3)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, Space.l)
+        .padding(.vertical, Space.m)
     }
 
     private var miniBagDots: some View {
@@ -470,7 +461,7 @@ struct FFInventoryRow: View {
                 let dotColor: Color = bag.isExpired ? Color.milkDanger
                     : bag.isExpiringSoon(within: 14) ? Color.ffButter : Color.ffSage
                 RoundedRectangle(cornerRadius: 2)
-                    .fill(dotColor.opacity(0.5))
+                    .fill(dotColor)
                     .frame(width: 8, height: 10)
             }
             if bag.milkBagCount > 10 {
@@ -507,7 +498,7 @@ struct TagBadge: View {
             .font(.caption2.weight(.semibold))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(color.opacity(0.15), in: Capsule())
+            .background(color.opacity(0.22), in: Capsule())
             .foregroundStyle(color)
     }
 }
@@ -536,7 +527,7 @@ struct FilterSortSheet: View {
                 Section("Location") {
                     let locs = vm.uniqueLocations(allBags)
                     if locs.isEmpty {
-                        Text("No locations set").foregroundStyle(.secondary)
+                        Text("No locations set").foregroundStyle(Color.ffInk2)
                     } else {
                         Picker("Location", selection: $vm.filterLocation) {
                             Text("All").tag("")
