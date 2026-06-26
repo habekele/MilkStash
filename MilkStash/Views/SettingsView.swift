@@ -168,74 +168,87 @@ struct SettingsView: View {
 
     private var babySection: some View {
         settingsSection(title: "YOUR BABY") {
-            // Daily intake
-            settingsRow {
-                settingsLabel(icon: "drop.fill", label: "Daily intake")
-            } value: {
-                HStack(spacing: 6) {
+            VStack(spacing: 0) {
+                babyRow(
+                    icon: "drop.fill",
+                    label: "Daily intake",
+                    unit: appSettings.preferredUnit.rawValue + "/day"
+                ) {
                     TextField("25", text: $dailyOzText)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                         .focused($focusDailyOz)
-                        .frame(width: 60)
-                        .font(.system(size: 16, weight: .semibold, design: .serif))
+                        .font(.system(size: 17, weight: .semibold, design: .serif))
                         .foregroundStyle(Color.ffTerra)
+                        .monospacedDigit()
+                        .fixedSize()
                         .onChange(of: dailyOzText) {
                             if let val = Double(dailyOzText), val > 0 {
                                 mutateSettings { $0.setDailyGoalFromDisplayValue(val) }
                             }
                         }
-                    Text(appSettings.preferredUnit.rawValue + "/day")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(Color.ffInk3)
-                        .frame(width: 60, alignment: .leading)
                 }
-                .frame(width: 126, alignment: .trailing)
-            }
 
-
-            // Low stash alert
-            settingsRow {
-                settingsLabel(icon: "exclamationmark.triangle", label: "Low stash alert")
-            } value: {
-                HStack(spacing: 6) {
+                babyRow(
+                    icon: "exclamationmark.triangle",
+                    label: "Low stash alert",
+                    unit: appSettings.preferredUnit.rawValue
+                ) {
                     TextField("100", text: $thresholdText)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                         .focused($focusThreshold)
-                        .frame(width: 60)
-                        .font(.system(size: 16, weight: .semibold, design: .serif))
+                        .font(.system(size: 17, weight: .semibold, design: .serif))
                         .foregroundStyle(Color.ffTerra)
+                        .monospacedDigit()
+                        .fixedSize()
                         .onChange(of: thresholdText) {
                             if let val = Double(thresholdText), val > 0 {
                                 mutateSettings { $0.setLowStashThresholdFromDisplayValue(val) }
                             }
                         }
-                    Text(appSettings.preferredUnit.rawValue)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(Color.ffInk3)
-                        .frame(width: 60, alignment: .leading)
                 }
-                .frame(width: 126, alignment: .trailing)
-            }
 
-            // Goal duration (read-only display, edit via Journey tab)
-            settingsRow {
-                settingsLabel(icon: "target", label: "Goal duration")
-            } value: {
-                HStack(spacing: 6) {
+                babyRow(
+                    icon: "target",
+                    label: "Goal duration",
+                    unit: "months"
+                ) {
                     Text("\(appSettings.goalMonths)")
-                        .font(.system(size: 16, weight: .semibold, design: .serif))
+                        .font(.system(size: 17, weight: .semibold, design: .serif))
                         .foregroundStyle(Color.ffTerra)
-                        .frame(width: 60, alignment: .trailing)
-                    Text("months")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(Color.ffInk3)
-                        .frame(width: 60, alignment: .leading)
+                        .monospacedDigit()
                 }
-                .frame(width: 126, alignment: .trailing)
             }
         }
+    }
+
+    @ViewBuilder
+    private func babyRow<Value: View>(
+        icon: String,
+        label: String,
+        unit: String,
+        @ViewBuilder value: () -> Value
+    ) -> some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.ffInk3)
+                    .frame(width: 20)
+                HStack(spacing: 6) {
+                    Text(label)
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.ffInk)
+                    Text("(\(unit))")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Color.ffInk3)
+                }
+            }
+            Spacer(minLength: 8)
+            value()
+        }
+        .padding(.vertical, 10)
     }
 
     // MARK: - FIFO Section

@@ -67,6 +67,51 @@ struct StashService {
         return result
     }
 
+    /// FIFO that pulls a target number of whole milk bags (rather than ounces).
+    static func fifoRecommendationByBags(
+        neededBags: Int,
+        bags: [MilkBag],
+        includeExpired: Bool
+    ) -> [FIFOItem] {
+        guard neededBags > 0 else { return [] }
+        let eligible = bags
+            .filter { $0.status == .inStash && $0.milkBagCount > 0 }
+            .filter { includeExpired || !$0.isExpired }
+            .sorted {
+                if $0.freezeDate != $1.freezeDate { return $0.freezeDate < $1.freezeDate }
+                return $0.expirationDate < $1.expirationDate
+            }
+
+        var remaining = neededBags
+        var result: [FIFOItem] = []
+        for ziplock in eligible {
+            guard remaining > 0 else { break }
+            let take = min(remaining, ziplock.milkBagCount)
+            let takeOz = Double(take) * ziplock.volumePerBagOz
+            result.append(FIFOItem(bag: ziplock, takeOz: takeOz, wholeMilkBags: take))
+            remaining -= take
+        }
+        return result
+    }
+
+    /// Build a plan from a manual user selection of how many bags to pull
+    /// from each ziplock, sorted by freeze date ascending.
+    static func manualPlan(
+        selections: [UUID: Int],
+        bags: [MilkBag]
+    ) -> [FIFOItem] {
+        let lookup = Dictionary(uniqueKeysWithValues: bags.map { ($0.id, $0) })
+        var items: [FIFOItem] = []
+        for (id, take) in selections where take > 0 {
+            guard let bag = lookup[id] else { continue }
+            let clamped = min(take, bag.milkBagCount)
+            guard clamped > 0 else { continue }
+            let takeOz = Double(clamped) * bag.volumePerBagOz
+            items.append(FIFOItem(bag: bag, takeOz: takeOz, wholeMilkBags: clamped))
+        }
+        return items.sorted { $0.bag.freezeDate < $1.bag.freezeDate }
+    }
+
     // MARK: - Ziplock Sequence Label
 
     static func sequenceLabel(for bag: MilkBag, in bags: [MilkBag]) -> String {

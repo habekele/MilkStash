@@ -78,12 +78,15 @@ struct GoalView: View {
     }
 
     private var milestoneDefs: [(oz: Double, label: String)] {
-        [
-            (100,           "First 100 oz"),
+        let defs: [(oz: Double, label: String)] = [
+            (1,                           "First Ziplock frozen"),
+            (100,                         "First 100 oz"),
             (s.effectiveDailyOzGoal * 14, "Two weeks of supply"),
             (s.effectiveDailyOzGoal * 30, "One month of supply"),
-            (s.goalTargetOz,     "\(s.goalMonths) months · \(String(format: "%.0f", s.goalTargetOz)) oz"),
+            (s.goalTargetOz / 2,          "Halfway to goal"),
+            (s.goalTargetOz,              "\(s.goalMonths) months · \(String(format: "%.0f", s.goalTargetOz)) oz"),
         ]
+        return defs.sorted { $0.oz < $1.oz }
     }
 
     var body: some View {

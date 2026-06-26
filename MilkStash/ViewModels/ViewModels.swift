@@ -186,52 +186,76 @@ final class AddEditBagViewModel {
 @MainActor
 @Observable
 final class UseMilkViewModel {
-    var amountText: String = ""
-    var unit: MilkUnit = .oz
-    var includeExpired: Bool = false
-    var isAmountFieldFocused: Bool = false
-
-    var recommendation: [FIFOItem] = []
-    var showConfirmAlert: Bool = false
-
-    var neededOz: Double {
-        guard let val = Double(amountText), val > 0 else { return 0 }
-        return UnitConversion.convert(val, from: unit, to: .oz)
+    enum SelectionMode: String, CaseIterable {
+        case auto   = "Auto (FIFO)"
+        case manual = "Pick yourself"
     }
 
+    var bagCountText: String = ""
+    var mode: SelectionMode = .auto
+    var unit: MilkUnit = .oz
+    var includeExpired: Bool = false
+    var isBagFieldFocused: Bool = false
+
+    /// Per-ziplock bag counts for manual mode, keyed by MilkBag.id
+    var manualSelections: [UUID: Int] = [:]
+
+    var recommendation: [FIFOItem] = []
+
+    var bagsNeeded: Int { max(Int(bagCountText) ?? 0, 0) }
+
     func updateRecommendation(bags: [MilkBag]) {
-        guard neededOz > 0 else { recommendation = []; return }
-        recommendation = StashService.fifoRecommendation(
-            neededOz: neededOz,
-            bags: bags,
-            includeExpired: includeExpired
-        )
+        switch mode {
+        case .auto:
+            guard bagsNeeded > 0 else { recommendation = []; return }
+            recommendation = StashService.fifoRecommendationByBags(
+                neededBags: bagsNeeded,
+                bags: bags,
+                includeExpired: includeExpired
+            )
+        case .manual:
+            recommendation = StashService.manualPlan(selections: manualSelections, bags: bags)
+        }
+    }
+
+    var totalSelectedBags: Int {
+        recommendation.map(\.wholeMilkBags).reduce(0, +)
     }
 
     var canFulfill: Bool {
-        recommendation.map(\.takeOz).reduce(0, +) >= neededOz - 0.01
+        switch mode {
+        case .auto:   return totalSelectedBags >= bagsNeeded && bagsNeeded > 0
+        case .manual: return totalSelectedBags > 0
+        }
     }
 
     var totalCoveredOz: Double {
         recommendation.map(\.takeOz).reduce(0, +)
     }
 
-    func confirmSummary(allBags: [MilkBag]) -> String {
-        var lines: [String] = []
-        for item in recommendation {
-            let seq = StashService.sequenceLabel(for: item.bag, in: allBags)
-            let ziplockLabel = seq.isEmpty
-                ? DateFormatter.freeze.string(from: item.bag.freezeDate)
-                : "\(DateFormatter.freeze.string(from: item.bag.freezeDate)) · \(seq)"
-            let takeDesc = item.takeDescription(unit: unit)
-            lines.append("• \(ziplockLabel)\n  \(takeDesc)\n  \(item.bag.location)")
+    func setManualBagCount(for bagID: UUID, to count: Int, in bags: [MilkBag]) {
+        let clamped = max(0, count)
+        if clamped == 0 {
+            manualSelections.removeValue(forKey: bagID)
+        } else {
+            manualSelections[bagID] = clamped
         }
-        return lines.joined(separator: "\n\n")
+        updateRecommendation(bags: bags)
+    }
+
+    func manualCount(for bagID: UUID) -> Int {
+        manualSelections[bagID] ?? 0
+    }
+
+    func resetManualSelections(in bags: [MilkBag]) {
+        manualSelections = [:]
+        updateRecommendation(bags: bags)
     }
 
     func applyUse(context: ModelContext) {
         try? StashService.applyUse(plan: recommendation, context: context)
-        amountText = ""
+        bagCountText = ""
+        manualSelections = [:]
         recommendation = []
     }
 }

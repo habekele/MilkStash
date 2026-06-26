@@ -406,9 +406,14 @@ struct FFInventoryRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 // Ziplock label
                 HStack(spacing: 6) {
-                    Text(!seq.isEmpty ? seq : DateFormatter.freeze.string(from: bag.freezeDate))
+                    Text(DateFormatter.freeze.string(from: bag.freezeDate))
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.ffInk)
+                    if !seq.isEmpty {
+                        Text(seq)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color.ffInk3)
+                    }
                 }
 
                 // Bag count × volume
@@ -512,57 +517,247 @@ struct FilterSortSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Status") {
-                    Picker("Status", selection: $vm.filterStatus) {
-                        Text("All").tag(Optional<BagStatus>.none)
-                        ForEach(BagStatus.allCases, id: \.self) { s in
-                            Text(s.rawValue).tag(Optional(s))
+            ScrollView {
+                VStack(spacing: 14) {
+                    headerArea
+                    sortSection
+                    statusSection
+                    locationSection
+                    expirationSection
+                    clearButton
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 4)
+                .padding(.bottom, 32)
+            }
+            .background(Color.ffBg.ignoresSafeArea())
+            .navigationBarHidden(true)
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerArea: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Text("Done")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
+                        .background(Color.ffTerra, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            Text("Filter & Sort")
+                .font(.system(size: 32, weight: .regular, design: .serif))
+                .foregroundStyle(Color.ffInk)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 8)
+    }
+
+    // MARK: - Sort
+
+    private var sortSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            FFEyebrow(text: "SORT BY")
+            FFCard(padding: 0) {
+                VStack(spacing: 0) {
+                    ForEach(Array(InventoryViewModel.SortOption.allCases.enumerated()), id: \.element) { idx, option in
+                        selectableRow(
+                            icon: sortIcon(for: option),
+                            label: option.rawValue,
+                            isSelected: vm.sortOption == option
+                        ) { vm.sortOption = option }
+                        if idx < InventoryViewModel.SortOption.allCases.count - 1 {
+                            FFDivider().padding(.leading, 50)
                         }
                     }
-                    .pickerStyle(.inline)
-                    .labelsHidden()
-                }
-
-                Section("Location") {
-                    let locs = vm.uniqueLocations(allBags)
-                    if locs.isEmpty {
-                        Text("No locations set").foregroundStyle(Color.ffInk2)
-                    } else {
-                        Picker("Location", selection: $vm.filterLocation) {
-                            Text("All").tag("")
-                            ForEach(locs, id: \.self) { loc in Text(loc).tag(loc) }
-                        }
-                        .pickerStyle(.inline)
-                        .labelsHidden()
-                    }
-                }
-
-                Section("Expiration") {
-                    Toggle("Expiring Soon (30 days)", isOn: $vm.filterExpiringSoon)
-                    Toggle("Expired", isOn: $vm.filterExpired)
-                }
-
-                Section {
-                    Button("Clear Filters") {
-                        vm.filterLocation = ""
-                        vm.filterBin = ""
-                        vm.filterStatus = .inStash
-                        vm.filterExpiringSoon = false
-                        vm.filterExpired = false
-                    }
-                    .foregroundStyle(Color.milkDanger)
                 }
             }
-            .navigationTitle("Filter & Sort")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .fontWeight(.semibold)
+        }
+    }
+
+    private func sortIcon(for option: InventoryViewModel.SortOption) -> String {
+        switch option {
+        case .freezeOldest: return "arrow.up"
+        case .freezeNewest: return "arrow.down"
+        case .expiration:   return "hourglass"
+        case .volume:       return "drop.fill"
+        }
+    }
+
+    // MARK: - Status
+
+    private var statusSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            FFEyebrow(text: "STATUS")
+            FFCard(padding: 0) {
+                VStack(spacing: 0) {
+                    selectableRow(icon: "circle.dashed", label: "All", isSelected: vm.filterStatus == nil) {
+                        vm.filterStatus = nil
+                    }
+                    FFDivider().padding(.leading, 50)
+                    ForEach(Array(BagStatus.allCases.enumerated()), id: \.element) { idx, s in
+                        selectableRow(
+                            icon: statusIcon(for: s),
+                            label: s.rawValue,
+                            isSelected: vm.filterStatus == s
+                        ) { vm.filterStatus = s }
+                        if idx < BagStatus.allCases.count - 1 {
+                            FFDivider().padding(.leading, 50)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func statusIcon(for s: BagStatus) -> String {
+        switch s {
+        case .inStash:   return "shippingbox.fill"
+        case .used:      return "checkmark.circle"
+        case .discarded: return "xmark.circle"
+        }
+    }
+
+    // MARK: - Location
+
+    private var locationSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            FFEyebrow(text: "LOCATION")
+            FFCard(padding: 0) {
+                let locs = vm.uniqueLocations(allBags)
+                if locs.isEmpty {
+                    HStack(spacing: 10) {
+                        Image(systemName: "tray")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.ffInk3)
+                            .frame(width: 20)
+                        Text("No locations set")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.ffInk2)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                } else {
+                    VStack(spacing: 0) {
+                        selectableRow(
+                            icon: "circle.dashed",
+                            label: "All locations",
+                            isSelected: vm.filterLocation.isEmpty
+                        ) { vm.filterLocation = "" }
+                        FFDivider().padding(.leading, 50)
+                        ForEach(Array(locs.enumerated()), id: \.element) { idx, loc in
+                            selectableRow(
+                                icon: "tray.full",
+                                label: loc,
+                                isSelected: vm.filterLocation == loc
+                            ) { vm.filterLocation = loc }
+                            if idx < locs.count - 1 {
+                                FFDivider().padding(.leading, 50)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // MARK: - Expiration
+
+    private var expirationSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            FFEyebrow(text: "EXPIRATION")
+            FFCard(padding: 12) {
+                VStack(spacing: 0) {
+                    Toggle(isOn: $vm.filterExpiringSoon) {
+                        toggleLabel(icon: "clock.badge.exclamationmark", label: "Expiring soon (30 days)")
+                    }
+                    .tint(Color.ffTerra)
+                    .padding(.vertical, 6)
+
+                    FFDivider()
+
+                    Toggle(isOn: $vm.filterExpired) {
+                        toggleLabel(icon: "exclamationmark.triangle", label: "Expired")
+                    }
+                    .tint(Color.ffTerra)
+                    .padding(.vertical, 6)
+                }
+            }
+        }
+    }
+
+    // MARK: - Clear
+
+    private var clearButton: some View {
+        Button {
+            vm.filterLocation = ""
+            vm.filterBin = ""
+            vm.filterStatus = .inStash
+            vm.filterExpiringSoon = false
+            vm.filterExpired = false
+            vm.sortOption = .freezeOldest
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.counterclockwise")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Clear filters")
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            .foregroundStyle(Color.milkDanger)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(Color.milkDanger.opacity(0.08), in: RoundedRectangle(cornerRadius: Radius.l))
+            .overlay(RoundedRectangle(cornerRadius: Radius.l).stroke(Color.milkDanger.opacity(0.2), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
+    }
+
+    // MARK: - Row helpers
+
+    @ViewBuilder
+    private func selectableRow(icon: String, label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundStyle(isSelected ? Color.ffTerra : Color.ffInk3)
+                    .frame(width: 20)
+                Text(label)
+                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(Color.ffInk)
+                Spacer()
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.ffTerra)
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func toggleLabel(icon: String, label: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundStyle(Color.ffInk3)
+                .frame(width: 20)
+            Text(label)
+                .font(.system(size: 15))
+                .foregroundStyle(Color.ffInk)
         }
     }
 }

@@ -15,18 +15,15 @@ struct ContentView: View {
     @Binding var selectedTab: Int
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            ZStack {
-                HomeView()    .opacity(selectedTab == 0 ? 1 : 0)
-                InventoryView().opacity(selectedTab == 1 ? 1 : 0)
-                GoalView()    .opacity(selectedTab == 2 ? 1 : 0)
-                SettingsView().opacity(selectedTab == 3 ? 1 : 0)
-            }
-
-            FFTabBar(selectedTab: $selectedTab)
-                .padding(.bottom, 8)
+        ZStack {
+            HomeView()    .opacity(selectedTab == 0 ? 1 : 0)
+            InventoryView().opacity(selectedTab == 1 ? 1 : 0)
+            GoalView()    .opacity(selectedTab == 2 ? 1 : 0)
+            SettingsView().opacity(selectedTab == 3 ? 1 : 0)
         }
-        .ignoresSafeArea(edges: .bottom)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            FFTabBar(selectedTab: $selectedTab)
+        }
         .task {
             if settings.isEmpty {
                 let s = AppSettings()
@@ -76,10 +73,17 @@ struct FFTabBar: View {
             }
         }
         .padding(.horizontal, 12)
-        .background(.ultraThinMaterial, in: Capsule())
+        .background(
+            ZStack {
+                Color.ffSurface.opacity(0.92)
+                Rectangle().fill(.regularMaterial)
+            }
+            .clipShape(Capsule())
+        )
         .overlay(Capsule().stroke(Color.ffLine, lineWidth: 0.5))
-        .padding(.horizontal, 24)
         .shadow(color: .black.opacity(0.12), radius: 16, x: 0, y: 6)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 6)
     }
 }
 
@@ -96,8 +100,9 @@ enum Space {
     static let xxl: CGFloat = 32
     /// Standard horizontal screen padding. Matches iOS system default feel.
     static let screenPad: CGFloat = 20
-    /// Safe clearance above the floating tab bar.
-    static let tabBarClearance: CGFloat = 104
+    /// Extra breathing room above the floating tab bar (the bar itself
+    /// already reserves space via safeAreaInset).
+    static let tabBarClearance: CGFloat = 8
 }
 
 /// Four-tier corner radius scale. Small inline tiles, buttons/rows, cards, and hero.

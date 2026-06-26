@@ -197,62 +197,71 @@ struct HomeView: View {
     // MARK: - Quick Actions
 
     private var quickActionsRow: some View {
-        HStack(spacing: Space.m) {
-            // Primary: log session
-            Button { showAddBag = true } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 20))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Log a session")
-                            .font(.system(size: 15, weight: .semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        Text("Add new Ziplock")
-                            .font(.system(size: 11))
-                            .opacity(0.8)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-                .background(Color.ffTerra, in: RoundedRectangle(cornerRadius: Radius.l))
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity)
+        GeometryReader { geo in
+            let buttonWidth = (geo.size.width - Space.m) / 2
+            HStack(spacing: Space.m) {
+                quickActionButton(
+                    icon: "plus.circle.fill",
+                    title: "Log a session",
+                    subtitle: "Add new Ziplock",
+                    style: .primary
+                ) { showAddBag = true }
+                .frame(width: buttonWidth)
 
-            // Secondary: use milk
-            Button { showUseMilk = true } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "drop.fill")
-                        .font(.system(size: 20))
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Use milk")
-                            .font(.system(size: 15, weight: .semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                        Text("FIFO dispense")
-                            .font(.system(size: 11))
-                            .opacity(0.8)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                    }
-                    Spacer(minLength: 0)
-                }
-                .foregroundStyle(Color.ffTerra)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 14)
-                .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
-                .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: Radius.l))
-                .overlay(RoundedRectangle(cornerRadius: Radius.l).stroke(Color.ffLine, lineWidth: 0.5))
+                quickActionButton(
+                    icon: "drop.fill",
+                    title: "Use milk",
+                    subtitle: "FIFO dispense",
+                    style: .secondary
+                ) { showUseMilk = true }
+                .frame(width: buttonWidth)
             }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity)
         }
+        .frame(height: 72)
+    }
+
+    private enum QuickActionStyle { case primary, secondary }
+
+    @ViewBuilder
+    private func quickActionButton(
+        icon: String,
+        title: String,
+        subtitle: String,
+        style: QuickActionStyle,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .opacity(0.8)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(style == .primary ? Color.white : Color.ffTerra)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+            .background(
+                style == .primary ? Color.ffTerra : Color.ffSurface,
+                in: RoundedRectangle(cornerRadius: Radius.l)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: Radius.l)
+                    .stroke(style == .primary ? Color.clear : Color.ffLine, lineWidth: 0.5)
+            )
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - At a Glance

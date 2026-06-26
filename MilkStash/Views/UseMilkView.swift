@@ -15,219 +15,442 @@ struct UseMilkView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var vm = UseMilkViewModel()
-    @FocusState private var amountFocused: Bool
+    @FocusState private var bagFieldFocused: Bool
+
+    private let bagPresets: [Int] = [1, 2, 3, 4, 6, 8]
+
+    private var sortedStashBags: [MilkBag] {
+        stashBags
+            .filter { vm.includeExpired || !$0.isExpired }
+            .filter { $0.milkBagCount > 0 }
+            .sorted {
+                if $0.freezeDate != $1.freezeDate { return $0.freezeDate < $1.freezeDate }
+                return $0.expirationDate < $1.expirationDate
+            }
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: Space.l) {
-                    amountInputCard
-                    optionsCard
-
-                    if !amountFocused {
-                        actionButtons
+                VStack(spacing: 14) {
+                    headerArea
+                    modeSection
+                    if vm.mode == .auto {
+                        bagInputSection
+                    } else {
+                        manualPickerSection
                     }
+                    optionsSection
 
                     if !vm.recommendation.isEmpty {
-                        recommendationCard
-                    } else if !vm.amountText.isEmpty && Double(vm.amountText) != nil {
-                        noRecommendationCard
+                        planSection
+                    } else if vm.mode == .auto && vm.bagsNeeded > 0 {
+                        emptyPlanSection
                     }
                 }
-                .padding(.horizontal, Space.screenPad)
-                .padding(.top, Space.s)
-                .padding(.bottom, Space.xl)
-                .frame(maxWidth: 700)
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 18)
+                .padding(.top, 4)
+                .padding(.bottom, 32)
             }
-            .background(Color.ffBg)
+            .background(Color.ffBg.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
-            .navigationTitle("Use Milk")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarHidden(true)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("Plan") { amountFocused = false }
-                        .fontWeight(.semibold)
+                    Button("Done") { bagFieldFocused = false }
+                        .foregroundStyle(Color.ffTerra)
                 }
             }
-            .onChange(of: vm.amountText)    { vm.updateRecommendation(bags: stashBags) }
-            .onChange(of: vm.unit)          { vm.updateRecommendation(bags: stashBags) }
-            .onChange(of: vm.includeExpired){ vm.updateRecommendation(bags: stashBags) }
-            .onChange(of: amountFocused)    { vm.isAmountFieldFocused = amountFocused }
+            .onChange(of: vm.bagCountText)   { vm.updateRecommendation(bags: stashBags) }
+            .onChange(of: vm.mode)           { vm.updateRecommendation(bags: stashBags) }
+            .onChange(of: vm.includeExpired) { vm.updateRecommendation(bags: stashBags) }
+            .onChange(of: bagFieldFocused)   { vm.isBagFieldFocused = bagFieldFocused }
             .onAppear {
                 vm.unit = appSettings.preferredUnit
                 vm.includeExpired = appSettings.includeExpiredInFIFO
             }
-            .alert("Confirm Use", isPresented: $vm.showConfirmAlert) {
-                Button("Confirm") {
-                    vm.applyUse(context: context)
-                    dismiss()
+        }
+    }
+
+    // MARK: - Header
+
+    private var headerArea: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Button("Cancel") { dismiss() }
+                    .font(.system(size: 16))
+                    .foregroundStyle(Color.ffInk2)
+                Spacer()
+                if !vm.recommendation.isEmpty && vm.canFulfill {
+                    Button {
+                        vm.applyUse(context: context)
+                        dismiss()
+                    } label: {
+                        Text("Confirm")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 7)
+                            .background(Color.ffTerra, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
                 }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(vm.confirmSummary(allBags: allBags))
+            }
+
+            Text("Use Milk")
+                .font(.system(size: 32, weight: .regular, design: .serif))
+                .foregroundStyle(Color.ffInk)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 8)
+    }
+
+    // MARK: - Mode toggle
+
+    private var modeSection: some View {
+        Picker("Mode", selection: $vm.mode) {
+            ForEach(UseMilkViewModel.SelectionMode.allCases, id: \.self) { m in
+                Text(m.rawValue).tag(m)
+            }
+        }
+        .pickerStyle(.segmented)
+        .tint(Color.ffTerra)
+    }
+
+    // MARK: - Auto: bag count input
+
+    private var bagInputSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            FFEyebrow(text: "HOW MANY BAGS?")
+            FFCard(padding: 16) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        TextField("0", text: $vm.bagCountText)
+                            .keyboardType(.numberPad)
+                            .focused($bagFieldFocused)
+                            .font(.system(size: 44, weight: .regular, design: .serif))
+                            .foregroundStyle(Color.ffInk)
+                            .monospacedDigit()
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        Text(vm.bagsNeeded == 1 ? "milk bag" : "milk bags")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundStyle(Color.ffInk3)
+                    }
+
+                    quickBagPresetsRow
+
+                    FFDivider()
+
+                    let totalOz = stashBags.map(\.totalVolumeOz).reduce(0, +)
+                    let totalMilkBags = stashBags.map(\.milkBagCount).reduce(0, +)
+                    HStack(spacing: 6) {
+                        Image(systemName: "tray.full")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.ffInk3)
+                        Text("Available: \(totalMilkBags) bag\(totalMilkBags == 1 ? "" : "s")")
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(Color.ffInk2)
+                        Text("·").foregroundStyle(Color.ffInk3)
+                        Text(UnitConversion.formatted(totalOz, in: vm.unit))
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(Color.ffInk2)
+                    }
+                    .padding(.top, 2)
+                }
             }
         }
     }
 
-    // MARK: - Amount Input
-
-    private var amountInputCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("How much do you need?")
-                .font(.headline)
-
-            HStack(spacing: 12) {
-                TextField("Amount", text: $vm.amountText)
-                    .keyboardType(.decimalPad)
-                    .focused($amountFocused)
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .frame(maxWidth: .infinity)
-
-                Picker("Unit", selection: $vm.unit) {
-                    ForEach(MilkUnit.allCases, id: \.self) { u in
-                        Text(u.rawValue).tag(u)
+    private var quickBagPresetsRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.ffInk3)
+                Text("QUICK")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .tracking(1.5)
+                    .foregroundStyle(Color.ffInk3)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(bagPresets, id: \.self) { preset in
+                        Button {
+                            vm.bagCountText = "\(preset)"
+                        } label: {
+                            let isSelected = vm.bagCountText == "\(preset)"
+                            Text("\(preset)")
+                                .font(.system(size: 13, weight: .semibold))
+                                .frame(minWidth: 28)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                                .background(isSelected ? Color.ffTerra : Color.ffSurface2, in: Capsule())
+                                .foregroundStyle(isSelected ? .white : Color.ffInk)
+                                .overlay(Capsule().stroke(isSelected ? Color.clear : Color.ffLine, lineWidth: 0.5))
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 110)
-            }
-
-            if vm.neededOz > 0 {
-                let totalOz = stashBags.map(\.totalVolumeOz).reduce(0, +)
-                let totalMilkBags = stashBags.map(\.milkBagCount).reduce(0, +)
-                HStack {
-                    Text("Available: \(UnitConversion.formatted(totalOz, in: vm.unit))")
-                    Text("·")
-                    Text("\(totalMilkBags) milk bags")
-                }
-                .font(.caption)
-                .foregroundStyle(Color.ffInk2)
+                .padding(.vertical, 2)
             }
         }
-        .padding(Space.l)
-        .background(Color.cardBg, in: RoundedRectangle(cornerRadius: Radius.xl))
-        .overlay(RoundedRectangle(cornerRadius: Radius.xl).stroke(Color.ffLine, lineWidth: 0.5))
+    }
+
+    // MARK: - Manual: ziplock picker
+
+    private var manualPickerSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                FFEyebrow(text: "PICK ZIPLOCKS")
+                Spacer()
+                if !vm.manualSelections.isEmpty {
+                    Button {
+                        vm.resetManualSelections(in: stashBags)
+                    } label: {
+                        Text("Clear")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.ffTerra)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            if sortedStashBags.isEmpty {
+                FFCard(padding: 24) {
+                    VStack(spacing: 10) {
+                        Image(systemName: "tray")
+                            .font(.system(size: 32))
+                            .foregroundStyle(Color.ffInk4)
+                        Text("No Ziplocks available")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color.ffInk2)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            } else {
+                FFCard(padding: 0) {
+                    VStack(spacing: 0) {
+                        ForEach(Array(sortedStashBags.enumerated()), id: \.element.id) { idx, bag in
+                            ManualBagPickerRow(
+                                bag: bag,
+                                allBags: allBags,
+                                displayUnit: vm.unit,
+                                selected: vm.manualCount(for: bag.id),
+                                onChange: { count in
+                                    vm.setManualBagCount(for: bag.id, to: count, in: stashBags)
+                                }
+                            )
+                            if idx < sortedStashBags.count - 1 {
+                                FFDivider().padding(.leading, 16)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
     }
 
     // MARK: - Options
 
-    private var optionsCard: some View {
-        Toggle(isOn: $vm.includeExpired) {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(Color.milkWarn)
-                Text("Include Expired Bags")
-                    .font(.subheadline)
+    private var optionsSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            FFEyebrow(text: "OPTIONS")
+            FFCard(padding: 12) {
+                Toggle(isOn: $vm.includeExpired) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.ffInk3)
+                            .frame(width: 20)
+                        Text("Include expired bags")
+                            .font(.system(size: 15))
+                            .foregroundStyle(Color.ffInk)
+                    }
+                }
+                .tint(Color.ffTerra)
+                .padding(.vertical, 4)
             }
         }
-        .padding(Space.l)
-        .background(Color.cardBg, in: RoundedRectangle(cornerRadius: Radius.xl))
-        .overlay(RoundedRectangle(cornerRadius: Radius.xl).stroke(Color.ffLine, lineWidth: 0.5))
     }
 
-    // MARK: - Action Buttons
+    // MARK: - Plan
 
-    private var actionButtons: some View {
-        HStack(spacing: 12) {
-            Button {
-                amountFocused = false
-                vm.updateRecommendation(bags: stashBags)
-            } label: {
-                Label("Plan", systemImage: "list.clipboard")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
+    private var planSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(vm.canFulfill ? Color.ffSage : Color.ffButter)
+                    .frame(width: 7, height: 7)
+                FFEyebrow(text: vm.mode == .auto ? "FIFO PLAN" : "YOUR SELECTION")
+            }
+
+            FFCard(padding: 0) {
+                VStack(spacing: 0) {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Bags")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .tracking(1.2)
+                                .foregroundStyle(Color.ffInk3)
+                            Text("\(vm.totalSelectedBags)")
+                                .font(.system(size: 22, weight: .regular, design: .serif))
+                                .foregroundStyle(Color.ffInk)
+                        }
+                        Spacer()
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("Total")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .tracking(1.2)
+                                .foregroundStyle(Color.ffInk3)
+                            Text(UnitConversion.formatted(vm.totalCoveredOz, in: vm.unit))
+                                .font(.system(size: 22, weight: .regular, design: .serif))
+                                .foregroundStyle(Color.ffInk)
+                        }
+                    }
+                    .padding(.horizontal, 16)
                     .padding(.vertical, 14)
-                    .background(Color.milkBlue.opacity(0.12), in: RoundedRectangle(cornerRadius: Radius.l))
-                    .foregroundStyle(Color.milkBlue)
-            }
-            .buttonStyle(.plain)
 
-            if !vm.recommendation.isEmpty && vm.canFulfill {
-                Button { vm.showConfirmAlert = true } label: {
-                    Label("Confirm", systemImage: "checkmark.circle.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(vm.canFulfill ? Color.milkGreen : Color.milkWarn,
-                                    in: RoundedRectangle(cornerRadius: Radius.l))
-                        .foregroundStyle(.white)
-                }
-                .buttonStyle(.plain)
-                .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-        }
-        .animation(.spring(response: 0.35), value: vm.recommendation.isEmpty)
-    }
+                    if vm.mode == .auto && !vm.canFulfill {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 12))
+                            Text("Not enough bags in stash to cover this amount.")
+                                .font(.system(size: 12))
+                        }
+                        .foregroundStyle(Color.ffButter)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.ffButterSoft)
+                    }
 
-    // MARK: - Recommendation Card
+                    FFDivider()
 
-    private var recommendationCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("FIFO Plan")
-                    .font(.headline)
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(UnitConversion.formatted(vm.totalCoveredOz, in: vm.unit))
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(vm.canFulfill ? Color.milkGreen : Color.milkWarn)
-                    let totalBags = vm.recommendation.map(\.wholeMilkBags).reduce(0, +)
-                    Text("\(totalBags) milk bag\(totalBags == 1 ? "" : "s")")
-                        .font(.caption)
-                        .foregroundStyle(Color.ffInk2)
-                }
-            }
-
-            if !vm.canFulfill {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(Color.milkWarn)
-                    Text("Not enough milk in stash to fill this amount.")
-                        .font(.caption)
-                        .foregroundStyle(Color.milkWarn)
-                }
-            }
-
-            VStack(spacing: 0) {
-                ForEach(Array(vm.recommendation.enumerated()), id: \.element.id) { idx, item in
-                    FIFOItemRow(item: item, stepNumber: idx + 1, allBags: allBags, displayUnit: vm.unit)
-                    if idx < vm.recommendation.count - 1 {
-                        Divider().padding(.leading, 52)
+                    ForEach(Array(vm.recommendation.enumerated()), id: \.element.id) { idx, item in
+                        FIFOItemRow(item: item, stepNumber: idx + 1, allBags: allBags, displayUnit: vm.unit)
+                        if idx < vm.recommendation.count - 1 {
+                            FFDivider().padding(.leading, 60)
+                        }
                     }
                 }
             }
-            .background(Color.cardBg, in: RoundedRectangle(cornerRadius: Radius.xl))
-            .overlay(RoundedRectangle(cornerRadius: Radius.xl).stroke(Color.ffLine, lineWidth: 0.5))
         }
     }
 
-    private var noRecommendationCard: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "tray.fill")
-                .font(.system(size: 32))
-                .foregroundStyle(Color.milkWarn.opacity(0.7))
-            Text("No eligible Ziplocks found")
-                .font(.subheadline)
-                .foregroundStyle(Color.ffInk2)
-            if !vm.includeExpired {
-                Text("Try enabling 'Include Expired Bags'")
-                    .font(.caption)
-                    .foregroundStyle(Color.ffInk3)
+    private var emptyPlanSection: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            FFEyebrow(text: "FIFO PLAN")
+            FFCard(padding: 24) {
+                VStack(spacing: 10) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 32))
+                        .foregroundStyle(Color.ffInk4)
+                    Text("No eligible Ziplocks found")
+                        .font(.system(size: 15))
+                        .foregroundStyle(Color.ffInk2)
+                    if !vm.includeExpired {
+                        Text("Try turning on Include expired bags")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.ffInk3)
+                    }
+                }
+                .frame(maxWidth: .infinity)
             }
         }
-        .frame(maxWidth: .infinity)
-        .padding(24)
-        .background(Color.cardBg, in: RoundedRectangle(cornerRadius: Radius.l))
     }
 }
 
-// MARK: - FIFOItemRow
+// MARK: - Manual picker row
+
+struct ManualBagPickerRow: View {
+    let bag: MilkBag
+    let allBags: [MilkBag]
+    let displayUnit: MilkUnit
+    let selected: Int
+    let onChange: (Int) -> Void
+
+    private var seq: String { StashService.sequenceLabel(for: bag, in: allBags) }
+    private var isPicked: Bool { selected > 0 }
+
+    var body: some View {
+        HStack(spacing: Space.m) {
+            // Calendar block
+            let calColor = bag.isExpiringSoon(within: 14) ? Color.ffButter : Color.ffTerra
+            VStack(spacing: 0) {
+                Text(DateFormatter.calMonth.string(from: bag.freezeDate).uppercased())
+                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 2)
+                    .background(calColor)
+                Text(DateFormatter.calDay.string(from: bag.freezeDate))
+                    .font(.system(size: 16, weight: .bold, design: .serif))
+                    .foregroundStyle(calColor)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 2)
+                    .background(calColor.opacity(0.12))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: Radius.s))
+            .frame(width: 36)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(DateFormatter.freeze.string(from: bag.freezeDate))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.ffInk)
+                    if !seq.isEmpty {
+                        Text(seq)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.ffInk3)
+                    }
+                }
+                Text("\(bag.milkBagCount) × \(UnitConversion.formatted(bag.volumePerBagOz, in: displayUnit)) available")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.ffInk2)
+                if bag.isExpired {
+                    TagBadge("Expired", color: .milkDanger)
+                }
+            }
+
+            Spacer(minLength: 6)
+
+            HStack(spacing: 8) {
+                Button {
+                    onChange(max(0, selected - 1))
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(selected > 0 ? Color.ffTerra : Color.ffInk4)
+                }
+                .buttonStyle(.plain)
+                .disabled(selected == 0)
+
+                Text("\(selected)")
+                    .font(.system(size: 16, weight: .bold, design: .serif))
+                    .foregroundStyle(isPicked ? Color.ffTerra : Color.ffInk3)
+                    .frame(minWidth: 22)
+
+                Button {
+                    onChange(min(bag.milkBagCount, selected + 1))
+                } label: {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(selected < bag.milkBagCount ? Color.ffTerra : Color.ffInk4)
+                }
+                .buttonStyle(.plain)
+                .disabled(selected >= bag.milkBagCount)
+            }
+        }
+        .padding(.horizontal, Space.l)
+        .padding(.vertical, Space.m)
+        .background(isPicked ? Color.ffTerraSoft.opacity(0.45) : Color.clear)
+    }
+}
+
+// MARK: - Plan row
 
 struct FIFOItemRow: View {
     let item: FIFOItem
@@ -239,56 +462,56 @@ struct FIFOItemRow: View {
 
     var body: some View {
         HStack(spacing: Space.m) {
-            // Step circle
             ZStack {
                 Circle()
-                    .fill(Color.milkBlue.opacity(0.12))
+                    .fill(Color.ffTerraSoft)
                     .frame(width: IconTile.size, height: IconTile.size)
                 Text("\(stepNumber)")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(Color.milkBlue)
+                    .font(.system(size: 14, weight: .bold, design: .serif))
+                    .foregroundStyle(Color.ffTerra)
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                // Ziplock identity
                 HStack(spacing: 6) {
                     Text(DateFormatter.freeze.string(from: item.bag.freezeDate))
-                        .font(.subheadline.weight(.semibold))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.ffInk)
                     if !seq.isEmpty {
-                        Text(seq).font(.caption).foregroundStyle(Color.ffInk2)
+                        Text(seq)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.ffInk3)
                     }
                     if item.bag.isExpired { TagBadge("Expired", color: .milkDanger) }
                 }
 
-                // Location
                 if !item.bag.location.isEmpty {
                     Text(item.bag.location + (item.bag.slotBin.isEmpty ? "" : " · \(item.bag.slotBin)"))
-                        .font(.caption)
+                        .font(.system(size: 12))
                         .foregroundStyle(Color.ffInk2)
                 }
 
-                // What to take
-                Label(
-                    "\(item.wholeMilkBags) milk bag\(item.wholeMilkBags == 1 ? "" : "s")",
-                    systemImage: "bag.fill"
-                )
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.milkBlue)
+                HStack(spacing: 4) {
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 9))
+                    Text("\(item.wholeMilkBags) milk bag\(item.wholeMilkBags == 1 ? "" : "s")")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                .foregroundStyle(Color.ffTerra)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Color.milkBlue.opacity(0.1), in: Capsule())
+                .background(Color.ffTerraSoft, in: Capsule())
             }
 
             Spacer()
 
-            // Total oz for this Ziplock
             VStack(alignment: .trailing, spacing: 2) {
                 Text(UnitConversion.formatted(item.takeOz, in: displayUnit))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(item.isWholeZiplock ? Color.milkDanger : Color.milkBlue)
+                    .font(.system(size: 16, weight: .regular, design: .serif))
+                    .foregroundStyle(item.isWholeZiplock ? Color.milkDanger : Color.ffInk)
+                    .monospacedDigit()
                 Text(item.isWholeZiplock ? "All bags" : "Some bags")
-                    .font(.caption2)
-                    .foregroundStyle(Color.ffInk2)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Color.ffInk3)
             }
         }
         .padding(.horizontal, Space.l)
