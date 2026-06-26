@@ -78,8 +78,10 @@ struct InventoryView: View {
             }
             .alert("Discard Ziplock?", isPresented: $showDiscardConfirm, presenting: bagToDiscard) { bag in
                 Button("Discard", role: .destructive) {
-                    do { try StashService.discard(bag: bag, unit: appSettings.preferredUnit, context: context) }
-                    catch { print("InventoryView: discard failed:", error) }
+                    do {
+                        try StashService.discard(bag: bag, unit: appSettings.preferredUnit, context: context)
+                        Haptics.warning()
+                    } catch { print("InventoryView: discard failed:", error) }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { bag in
@@ -326,7 +328,7 @@ struct InventoryView: View {
 
     private func delete(_ bag: MilkBag) {
         context.delete(bag)
-        do { try context.save() } catch { print("InventoryView: save failed:", error) }
+        do { try context.save(); Haptics.warning() } catch { print("InventoryView: save failed:", error) }
     }
 }
 

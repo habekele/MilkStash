@@ -61,6 +61,7 @@ struct AddEditBagView: View {
             if let bag = bag {
                 vm.load(from: bag, settings: appSettings)
             } else {
+                vm.prefillFromLast(allBags)
                 vm.updateExpirationIfNeeded(settings: appSettings)
             }
         }
@@ -448,9 +449,15 @@ struct AddEditBagView: View {
     }
 
     private func save() {
-        guard vm.validate() else { return }
+        guard vm.validate() else {
+            Haptics.warning()
+            return
+        }
         if vm.save(bag: bag, context: context, settings: appSettings) {
+            Haptics.success()
             dismiss()
+        } else {
+            Haptics.warning()
         }
     }
 }

@@ -17,6 +17,9 @@ struct UseMilkView: View {
     @State private var vm = UseMilkViewModel()
     @FocusState private var bagFieldFocused: Bool
 
+    // Brief success confirmation shown after a use is logged, before dismiss.
+    @State private var loggedSummary: (oz: Double, bags: Int)? = nil
+
     private let bagPresets: [Int] = [1, 2, 3, 4, 6, 8]
 
     private var sortedStashBags: [MilkBag] {
@@ -55,6 +58,11 @@ struct UseMilkView: View {
             .background(Color.ffBg.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
             .navigationBarHidden(true)
+            .overlay {
+                if let summary = loggedSummary {
+                    successOverlay(oz: summary.oz, bags: summary.bags)
+                }
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -84,8 +92,7 @@ struct UseMilkView: View {
                 Spacer()
                 if !vm.recommendation.isEmpty && vm.canFulfill {
                     Button {
-                        vm.applyUse(context: context)
-                        dismiss()
+                        confirmUse()
                     } label: {
                         Text("Confirm")
                             .font(.system(size: 16, weight: .semibold))
@@ -104,6 +111,48 @@ struct UseMilkView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 8)
+    }
+
+    // MARK: - Confirm + success
+
+    private func confirmUse() {
+        // Capture totals before applyUse clears the recommendation.
+        let oz = vm.totalCoveredOz
+        let bags = vm.totalSelectedBags
+        vm.applyUse(context: context)
+        Haptics.success()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            loggedSummary = (oz, bags)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+            dismiss()
+        }
+    }
+
+    private func successOverlay(oz: Double, bags: Int) -> some View {
+        ZStack {
+            Color.black.opacity(0.18).ignoresSafeArea()
+            VStack(spacing: 14) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(Color.ffSage)
+                Text("Logged")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color.ffInk2)
+                Text(UnitConversion.formatted(oz, in: vm.unit))
+                    .font(.system(size: 30, weight: .semibold, design: .serif))
+                    .foregroundStyle(Color.ffInk)
+                Text("\(bags) milk bag\(bags == 1 ? "" : "s")")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.ffInk3)
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 28)
+            .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: Radius.hero))
+            .overlay(RoundedRectangle(cornerRadius: Radius.hero).stroke(Color.ffLine, lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.15), radius: 24, x: 0, y: 8)
+        }
+        .transition(.opacity)
     }
 
     // MARK: - Mode toggle

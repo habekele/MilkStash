@@ -20,6 +20,7 @@ struct HomeView: View {
     @State private var vm = HomeViewModel()
     @State private var showAddBag = false
     @State private var showUseMilk = false
+    @State private var showAlerts = false
 
     // MARK: - Date header helpers
     private static let dayFormatter: DateFormatter = {
@@ -58,6 +59,14 @@ struct HomeView: View {
         guard let oldest = oldestBag else { return "—" }
         let days = Calendar.current.dateComponents([.day], from: oldest.freezeDate, to: Date()).day ?? 0
         return "\(days)d"
+    }
+
+    // Actionable alerts surfaced via the bell
+    private var lowStash: Bool {
+        totalOz > 0 && totalOz < appSettings.effectiveLowStashThresholdOz
+    }
+    private var hasAlerts: Bool {
+        lowStash || !StashService.expiringSoon(bags: stashBags, within: 7).isEmpty
     }
 
     var body: some View {
@@ -101,6 +110,10 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showAddBag)  { AddEditBagView(bag: nil) }
         .sheet(isPresented: $showUseMilk) { UseMilkView() }
+        .sheet(isPresented: $showAlerts) {
+            AlertsSheet()
+                .presentationDetents([.medium, .large])
+        }
     }
 
     // MARK: - Header
@@ -111,14 +124,14 @@ struct HomeView: View {
                 FFEyebrow(text: dateHeader)
                 Spacer()
                 Button {
-                    // bell action — placeholder
+                    showAlerts = true
                 } label: {
-                    Image(systemName: "bell")
+                    Image(systemName: hasAlerts ? "bell.badge.fill" : "bell")
                         .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(Color.ffInk3)
+                        .foregroundStyle(hasAlerts ? Color.ffTerra : Color.ffInk3)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Notifications")
+                .accessibilityLabel(hasAlerts ? "Alerts, action needed" : "Alerts")
             }
             Text("Hello, friend")
                 .font(.system(size: 34, weight: .regular, design: .serif))
