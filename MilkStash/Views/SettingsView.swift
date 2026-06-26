@@ -51,6 +51,7 @@ struct SettingsView: View {
                 .padding(.bottom, 80)
             }
             .background(Color.ffBg.ignoresSafeArea())
+            .tracksTabBar()
             .navigationBarHidden(true)
             .onAppear {
                 refreshEditableText(using: appSettings)

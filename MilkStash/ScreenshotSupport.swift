@@ -53,6 +53,32 @@ enum ScreenshotData {
             location: "Deep Freezer", slotBin: "Bin A"
         ))
 
+        // A little usage history for the History screen.
+        func at(_ daysAgo: Int, hour: Int, minute: Int = 0) -> Date {
+            let day = cal.date(byAdding: .day, value: -daysAgo, to: today)!
+            return cal.date(bySettingHour: hour, minute: minute, second: 0, of: day) ?? day
+        }
+        func freeze(_ daysAgo: Int) -> Date { cal.date(byAdding: .day, value: -daysAgo, to: today)! }
+
+        ctx.insert(UsageEvent(
+            kind: .used, timestamp: at(0, hour: 8, minute: 20),
+            totalBags: 2, totalVolumeOz: 9.5, unit: .oz,
+            lines: [
+                UsageLineSnapshot(labelCode: "A-12", freezeDate: freeze(168), milkBags: 1, volumeOz: 5.0),
+                UsageLineSnapshot(labelCode: "A-13", freezeDate: freeze(152), milkBags: 1, volumeOz: 4.5),
+            ]
+        ))
+        ctx.insert(UsageEvent(
+            kind: .used, timestamp: at(0, hour: 14),
+            totalBags: 1, totalVolumeOz: 6.0, unit: .oz,
+            lines: [UsageLineSnapshot(labelCode: "B-02", freezeDate: freeze(121), milkBags: 1, volumeOz: 6.0)]
+        ))
+        ctx.insert(UsageEvent(
+            kind: .discarded, timestamp: at(2, hour: 18, minute: 30),
+            totalBags: 2, totalVolumeOz: 8.0, unit: .oz,
+            lines: [UsageLineSnapshot(labelCode: "C-09", freezeDate: freeze(190), milkBags: 2, volumeOz: 8.0)]
+        ))
+
         try? ctx.save()
     }
 }
@@ -71,8 +97,10 @@ struct ScreenshotHost: View {
             ContentView(selectedTab: .constant(1))
         case "goal", "journey":
             ContentView(selectedTab: .constant(2))
-        case "settings":
+        case "history":
             ContentView(selectedTab: .constant(3))
+        case "settings":
+            ContentView(selectedTab: .constant(4))
         case "addbag":
             AddEditBagView(bag: nil)
         case "feed", "use":

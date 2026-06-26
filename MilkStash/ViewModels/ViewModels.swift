@@ -253,7 +253,7 @@ final class UseMilkViewModel {
     }
 
     func applyUse(context: ModelContext) {
-        try? StashService.applyUse(plan: recommendation, context: context)
+        try? StashService.applyUse(plan: recommendation, unit: unit, context: context)
         bagCountText = ""
         manualSelections = [:]
         recommendation = []

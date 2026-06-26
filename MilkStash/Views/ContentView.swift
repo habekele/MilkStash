@@ -2,6 +2,7 @@
 
 import SwiftUI
 import SwiftData
+import Combine
 
 struct ContentView: View {
     @Query private var settings: [AppSettings]
@@ -13,17 +14,22 @@ struct ContentView: View {
 
     @Environment(\.modelContext) private var context
     @Binding var selectedTab: Int
+    @StateObject private var tabBar = TabBarVisibility()
 
     var body: some View {
         ZStack {
-            HomeView()    .opacity(selectedTab == 0 ? 1 : 0)
+            HomeView(onShowHistory: { selectedTab = 3 })
+                .opacity(selectedTab == 0 ? 1 : 0)
             InventoryView().opacity(selectedTab == 1 ? 1 : 0)
             GoalView()    .opacity(selectedTab == 2 ? 1 : 0)
-            SettingsView().opacity(selectedTab == 3 ? 1 : 0)
+            HistoryView() .opacity(selectedTab == 3 ? 1 : 0)
+            SettingsView().opacity(selectedTab == 4 ? 1 : 0)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             FFTabBar(selectedTab: $selectedTab)
         }
+        .environmentObject(tabBar)
+        .onChange(of: selectedTab) { _, _ in tabBar.reveal() }
         .task {
             if settings.isEmpty {
                 let s = AppSettings()
@@ -34,45 +40,127 @@ struct ContentView: View {
     }
 }
 
+// MARK: - Scroll-aware Tab Bar
+
+/// Drives the floating tab bar's hide/show as the user scrolls, matching the
+/// Instagram-style "collapse on scroll down, reveal on scroll up" behavior.
+final class TabBarVisibility: ObservableObject {
+    @Published private(set) var hidden = false
+
+    private var lastOffset: CGFloat = 0
+    private var accumulated: CGFloat = 0
+
+    /// Distance the user must drag in one direction before the bar reacts —
+    /// keeps it steady against tiny scroll jitters.
+    private let threshold: CGFloat = 28
+    /// Within this distance of the top the bar is always shown.
+    private let topRevealZone: CGFloat = 36
+
+    /// Always bring the bar back (e.g. when switching tabs).
+    func reveal() {
+        accumulated = 0
+        setHidden(false)
+    }
+
+    /// `offsetY` is the normalized vertical scroll offset (0 at the very top,
+    /// growing as the user scrolls down).
+    func onScroll(offsetY: CGFloat) {
+        let delta = offsetY - lastOffset
+        lastOffset = offsetY
+
+        if offsetY < topRevealZone {
+            accumulated = 0
+            setHidden(false)
+            return
+        }
+
+        // Accumulate movement in one direction; a direction flip resets it.
+        if (delta > 0) == (accumulated >= 0) {
+            accumulated += delta
+        } else {
+            accumulated = delta
+        }
+
+        if accumulated > threshold {            // scrolled down -> hide
+            accumulated = 0
+            setHidden(true)
+        } else if accumulated < -threshold {    // scrolled up -> show
+            accumulated = 0
+            setHidden(false)
+        }
+    }
+
+    private func setHidden(_ value: Bool) {
+        guard hidden != value else { return }
+        hidden = value
+    }
+}
+
+@available(iOS 18.0, *)
+private struct TabBarScrollTracker: ViewModifier {
+    @EnvironmentObject private var tabBar: TabBarVisibility
+    func body(content: Content) -> some View {
+        content.onScrollGeometryChange(for: CGFloat.self) { geo in
+            geo.contentOffset.y + geo.contentInsets.top
+        } action: { _, newValue in
+            tabBar.onScroll(offsetY: newValue)
+        }
+    }
+}
+
+extension View {
+    /// Attach to a `ScrollView` so it drives the floating tab bar's
+    /// hide-on-scroll behavior. No-op below iOS 18.
+    @ViewBuilder
+    func tracksTabBar() -> some View {
+        if #available(iOS 18.0, *) {
+            modifier(TabBarScrollTracker())
+        } else {
+            self
+        }
+    }
+}
+
 // MARK: - Custom Tab Bar
 
 struct FFTabBar: View {
     @Binding var selectedTab: Int
+    @EnvironmentObject private var tabBar: TabBarVisibility
 
-    private let items: [(icon: String, label: String)] = [
-        ("house.fill",      "Today"),
-        ("shippingbox.fill","Stash"),
-        ("heart.fill",      "Journey"),
-        ("gearshape.fill",  "Settings"),
+    private let items: [(icon: String, selectedIcon: String, label: String)] = [
+        ("house",       "house.fill",       "Today"),
+        ("shippingbox", "shippingbox.fill", "Stash"),
+        ("heart",       "heart.fill",       "Journey"),
+        ("clock",       "clock.fill",       "History"),
+        ("gearshape",   "gearshape.fill",   "Settings"),
     ]
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 6) {
             ForEach(0..<items.count, id: \.self) { idx in
+                let selected = selectedTab == idx
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                         selectedTab = idx
                     }
                 } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: items[idx].icon)
-                            .font(.system(size: 20, weight: selectedTab == idx ? .semibold : .regular))
-                            .foregroundStyle(selectedTab == idx ? Color.ffTerra : Color.ffInk4)
-                            .scaleEffect(selectedTab == idx ? 1.08 : 1.0)
-                            .shadow(color: selectedTab == idx ? Color.ffTerra.opacity(0.45) : .clear,
-                                    radius: 6, x: 0, y: 2)
-
-                        Text(items[idx].label)
-                            .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(selectedTab == idx ? Color.ffTerra : Color.ffInk4)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
+                    Image(systemName: selected ? items[idx].selectedIcon : items[idx].icon)
+                        .font(.system(size: 21, weight: selected ? .semibold : .regular))
+                        .foregroundStyle(selected ? Color.ffTerra : Color.ffInk4)
+                        .frame(width: 46, height: 46)
+                        .background(
+                            Circle()
+                                .fill(Color.ffTerraSoft)
+                                .opacity(selected ? 1 : 0)
+                        )
+                        .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(items[idx].label)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
         .background(
             ZStack {
                 Color.ffSurface.opacity(0.92)
@@ -82,8 +170,10 @@ struct FFTabBar: View {
         )
         .overlay(Capsule().stroke(Color.ffLine, lineWidth: 0.5))
         .shadow(color: .black.opacity(0.12), radius: 16, x: 0, y: 6)
-        .padding(.horizontal, 24)
         .padding(.bottom, 6)
+        .offset(y: tabBar.hidden ? 130 : 0)
+        .opacity(tabBar.hidden ? 0 : 1)
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: tabBar.hidden)
     }
 }
 

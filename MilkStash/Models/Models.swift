@@ -19,6 +19,11 @@ enum BagStatus: String, Codable, CaseIterable {
     case discarded = "Discarded"
 }
 
+enum UsageKind: String, Codable, CaseIterable {
+    case used      = "Used"
+    case discarded = "Discarded"
+}
+
 // MARK: - MilkBag Model
 // Represents one Ziplock bag containing multiple individual milk bags.
 
@@ -98,6 +103,71 @@ final class MilkBag {
         let today = Calendar.current.startOfDay(for: Date())
         let threshold = Calendar.current.date(byAdding: .day, value: days, to: today)!
         return !isExpired && expirationDate <= threshold
+    }
+}
+
+// MARK: - Usage History
+
+/// Immutable snapshot of one Ziplock involved in a usage event. Stored by value
+/// (not as a relationship to MilkBag) so history survives if the bag is later
+/// deleted from inventory.
+struct UsageLineSnapshot: Codable, Identifiable, Hashable {
+    var id: UUID = UUID()
+    var bagId: UUID = UUID()
+    var labelCode: String = ""
+    var freezeDate: Date = Date()
+    var milkBags: Int = 0
+    var volumeOz: Double = 0
+}
+
+/// A single recorded use-session or discard. Written at confirm time so the user
+/// can look back at where their milk went.
+@Model
+final class UsageEvent {
+    var id: UUID = UUID()
+    var timestamp: Date = Date()
+    var kindRaw: String = UsageKind.used.rawValue
+    var totalBags: Int = 0
+    var totalVolumeOz: Double = 0
+    var displayUnit: String = MilkUnit.oz.rawValue
+    var notes: String = ""
+
+    /// JSON-encoded `[UsageLineSnapshot]`. Events are immutable, so a blob avoids
+    /// a second @Model + CloudKit relationship.
+    var linesData: Data = Data()
+
+    init(
+        kind: UsageKind,
+        timestamp: Date = Date(),
+        totalBags: Int,
+        totalVolumeOz: Double,
+        unit: MilkUnit,
+        lines: [UsageLineSnapshot],
+        notes: String = ""
+    ) {
+        self.id = UUID()
+        self.timestamp = timestamp
+        self.kindRaw = kind.rawValue
+        self.totalBags = totalBags
+        self.totalVolumeOz = totalVolumeOz
+        self.displayUnit = unit.rawValue
+        self.notes = notes
+        self.lines = lines
+    }
+
+    var kind: UsageKind {
+        get { UsageKind(rawValue: kindRaw) ?? .used }
+        set { kindRaw = newValue.rawValue }
+    }
+
+    var unit: MilkUnit {
+        get { MilkUnit(rawValue: displayUnit) ?? .oz }
+        set { displayUnit = newValue.rawValue }
+    }
+
+    var lines: [UsageLineSnapshot] {
+        get { (try? JSONDecoder().decode([UsageLineSnapshot].self, from: linesData)) ?? [] }
+        set { linesData = (try? JSONEncoder().encode(newValue)) ?? Data() }
     }
 }
 

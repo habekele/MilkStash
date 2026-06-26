@@ -62,6 +62,7 @@ struct InventoryView: View {
                 .padding(.bottom, Space.tabBarClearance)
             }
             .background(Color.ffBg.ignoresSafeArea())
+            .tracksTabBar()
             .navigationBarHidden(true)
             .sheet(isPresented: $showAddBag) { AddEditBagView(bag: nil) }
             .sheet(item: $editingBag) { bag in AddEditBagView(bag: bag) }
@@ -77,8 +78,8 @@ struct InventoryView: View {
             }
             .alert("Discard Ziplock?", isPresented: $showDiscardConfirm, presenting: bagToDiscard) { bag in
                 Button("Discard", role: .destructive) {
-                    bag.status = .discarded
-                    do { try context.save() } catch { print("InventoryView: save failed:", error) }
+                    do { try StashService.discard(bag: bag, unit: appSettings.preferredUnit, context: context) }
+                    catch { print("InventoryView: discard failed:", error) }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { bag in

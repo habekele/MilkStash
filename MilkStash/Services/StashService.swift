@@ -127,7 +127,29 @@ struct StashService {
 
     // MARK: - Apply Use
 
-    static func applyUse(plan: [FIFOItem], context: ModelContext) throws {
+    static func applyUse(plan: [FIFOItem], unit: MilkUnit, context: ModelContext) throws {
+        guard !plan.isEmpty else { return }
+
+        // Record the session before mutating bags so the snapshot reflects what
+        // was actually pulled.
+        let lines = plan.map { item in
+            UsageLineSnapshot(
+                bagId: item.bag.id,
+                labelCode: item.bag.labelCode,
+                freezeDate: item.bag.freezeDate,
+                milkBags: item.wholeMilkBags,
+                volumeOz: item.takeOz
+            )
+        }
+        let event = UsageEvent(
+            kind: .used,
+            totalBags: plan.map(\.wholeMilkBags).reduce(0, +),
+            totalVolumeOz: plan.map(\.takeOz).reduce(0, +),
+            unit: unit,
+            lines: lines
+        )
+        context.insert(event)
+
         for item in plan {
             item.bag.milkBagCount -= item.wholeMilkBags
             if item.bag.milkBagCount <= 0 {
@@ -136,6 +158,39 @@ struct StashService {
             }
         }
         try context.save()
+    }
+
+    /// Mark a Ziplock as discarded and log a matching history event.
+    static func discard(bag: MilkBag, unit: MilkUnit, context: ModelContext) throws {
+        let line = UsageLineSnapshot(
+            bagId: bag.id,
+            labelCode: bag.labelCode,
+            freezeDate: bag.freezeDate,
+            milkBags: bag.milkBagCount,
+            volumeOz: bag.totalVolumeOz
+        )
+        let event = UsageEvent(
+            kind: .discarded,
+            totalBags: bag.milkBagCount,
+            totalVolumeOz: bag.totalVolumeOz,
+            unit: unit,
+            lines: [line]
+        )
+        context.insert(event)
+        bag.status = .discarded
+        try context.save()
+    }
+
+    // MARK: - History grouping
+
+    /// Group usage events into day buckets (descending), each bucket's events
+    /// also sorted newest-first.
+    static func groupedByDay(_ events: [UsageEvent]) -> [(day: Date, events: [UsageEvent])] {
+        let cal = Calendar.current
+        let buckets = Dictionary(grouping: events) { cal.startOfDay(for: $0.timestamp) }
+        return buckets
+            .map { (day: $0.key, events: $0.value.sorted { $0.timestamp > $1.timestamp }) }
+            .sorted { $0.day > $1.day }
     }
 
     // MARK: - Expiration date helper

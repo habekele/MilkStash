@@ -9,7 +9,7 @@ struct MilkStashApp: App {
     let isScreenshotMode: Bool
 
     init() {
-        let schema = Schema([MilkBag.self, AppSettings.self])
+        let schema = Schema([MilkBag.self, AppSettings.self, UsageEvent.self])
         let args = ProcessInfo.processInfo.arguments
         let screenshotMode = args.contains("-ScreenshotMode")
         self.isScreenshotMode = screenshotMode

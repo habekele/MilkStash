@@ -109,6 +109,7 @@ struct GoalView: View {
                 .padding(.bottom, Space.tabBarClearance)
             }
             .background(Color.ffBg.ignoresSafeArea())
+            .tracksTabBar()
             .navigationBarHidden(true)
             .sheet(isPresented: $editingGoal) {
                 GoalSetupSheet(

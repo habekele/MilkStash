@@ -10,6 +10,13 @@ struct HomeView: View {
     @Query private var settings: [AppSettings]
     private var appSettings: AppSettings { settings.first ?? AppSettings() }
 
+    @Query(filter: #Predicate<UsageEvent> { $0.kindRaw == "Used" },
+           sort: \UsageEvent.timestamp, order: .reverse)
+    private var recentUsed: [UsageEvent]
+
+    /// Invoked by the "See all" button to jump to the History tab.
+    var onShowHistory: (() -> Void)? = nil
+
     @State private var vm = HomeViewModel()
     @State private var showAddBag = false
     @State private var showUseMilk = false
@@ -41,12 +48,25 @@ struct HomeView: View {
         return stashBags.filter { $0.freezeDate >= cutoff }.map(\.totalVolumeOz).reduce(0, +)
     }
 
+    // Oldest in-stash Ziplock (surfaced in the hero footer)
+    private var oldestBag: MilkBag? {
+        stashBags.filter { $0.status == .inStash }
+                 .sorted { $0.freezeDate < $1.freezeDate }
+                 .first
+    }
+    private var oldestBagAge: String {
+        guard let oldest = oldestBag else { return "—" }
+        let days = Calendar.current.dateComponents([.day], from: oldest.freezeDate, to: Date()).day ?? 0
+        return "\(days)d"
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: Space.xl) {
+                VStack(spacing: Space.l) {
                     headerArea
                     heroCard
+                    quickActionsRow
                     if totalOz > 0 && totalOz < appSettings.effectiveLowStashThresholdOz {
                         HStack(spacing: Space.s) {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -68,15 +88,15 @@ struct HomeView: View {
                             message: "You're up \(UnitConversion.formatted(weeklyDeltaOz, in: unit)) this week. Steady and strong."
                         )
                     }
-                    quickActionsRow
-                    atAGlanceSection
                     useSoonSection
+                    recentlyUsedSection
                 }
                 .padding(.horizontal, Space.screenPad)
                 .padding(.top, Space.s)
                 .padding(.bottom, Space.tabBarClearance)
             }
             .background(Color.ffBg.ignoresSafeArea())
+            .tracksTabBar()
             .navigationBarHidden(true)
         }
         .sheet(isPresented: $showAddBag)  { AddEditBagView(bag: nil) }
@@ -103,11 +123,8 @@ struct HomeView: View {
             Text("Hello, friend")
                 .font(.system(size: 34, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
-
-            FFEyebrow(text: "YOUR STASH TODAY")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 4)
     }
 
     // MARK: - Hero Card
@@ -157,11 +174,8 @@ struct HomeView: View {
                 // 14-day bar strip
                 dayStripView
 
-                // Bottom row: ziplock + bag counts
-                HStack(spacing: 14) {
-                    FFStatPill(value: "\(ziplocks)", label: ziplocks == 1 ? "Ziplock" : "Ziplocks", icon: "bag.fill", color: Color.ffTerra)
-                    FFStatPill(value: "\(milkBags)", label: milkBags == 1 ? "Milk Bag" : "Milk Bags", icon: "drop.fill", color: Color.ffInk3)
-                }
+                // Bottom row: ziplock + bag counts + oldest
+                heroStatPills
             }
             .padding(Space.xl)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -169,6 +183,24 @@ struct HomeView: View {
         .clipShape(RoundedRectangle(cornerRadius: Radius.hero))
         .overlay(RoundedRectangle(cornerRadius: Radius.hero).stroke(Color.ffLine, lineWidth: 0.5))
         .shadow(color: Color.ffTerra.opacity(0.10), radius: 14, x: 0, y: 4)
+    }
+
+    // Hero footer stat pills — Ziplocks · Milk Bags · Oldest.
+    // Falls back to two rows on narrow widths / long mL values so nothing clips.
+    private var heroStatPills: some View {
+        let ziplockPill = FFStatPill(value: "\(ziplocks)", label: ziplocks == 1 ? "Ziplock" : "Ziplocks", icon: "bag.fill", color: Color.ffTerra)
+        let bagPill     = FFStatPill(value: "\(milkBags)", label: milkBags == 1 ? "Milk Bag" : "Milk Bags", icon: "drop.fill", color: Color.ffInk3)
+        let oldestPill  = FFStatPill(value: oldestBagAge, label: "oldest", icon: "calendar.badge.clock", color: Color.ffInk3)
+
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: Space.s) {
+                ziplockPill; bagPill; oldestPill
+            }
+            VStack(alignment: .leading, spacing: Space.s) {
+                HStack(spacing: Space.s) { ziplockPill; bagPill }
+                oldestPill
+            }
+        }
     }
 
     // 14-day bar strip visualization
@@ -264,55 +296,6 @@ struct HomeView: View {
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - At a Glance
-
-    private var atAGlanceSection: some View {
-        let unit   = appSettings.preferredUnit
-        let oldest = stashBags.filter { $0.status == .inStash }
-                              .sorted { $0.freezeDate < $1.freezeDate }
-                              .first
-        let expiring7 = StashService.expiringSoon(bags: stashBags, within: 7).count
-        let avgOz     = stashBags.isEmpty ? 0.0
-                            : totalOz / Double(max(stashBags.count, 1))
-
-        return VStack(alignment: .leading, spacing: 12) {
-            FFEyebrow(text: "AT A GLANCE")
-
-            FFCard {
-                VStack(spacing: 0) {
-                    FFGlanceRow(
-                        icon: "calendar.badge.clock",
-                        iconBg: Color.ffTerraSoft,
-                        iconColor: Color.ffTerra,
-                        label: "Oldest bag",
-                        value: oldest.map { DateFormatter.shortDate.string(from: $0.freezeDate) } ?? "—",
-                        detail: oldest.map { "\(Calendar.current.dateComponents([.day], from: $0.freezeDate, to: Date()).day ?? 0)d ago" } ?? ""
-                    )
-                    FFDivider().padding(.leading, 52)
-
-                    FFGlanceRow(
-                        icon: "clock.badge.exclamationmark",
-                        iconBg: expiring7 > 0 ? Color.ffButterSoft : Color.ffSageSoft,
-                        iconColor: expiring7 > 0 ? Color.ffButter : Color.ffSage,
-                        label: "Expiring soon",
-                        value: expiring7 == 0 ? "None" : "\(expiring7) bag\(expiring7 == 1 ? "" : "s")",
-                        detail: "within 7 days"
-                    )
-                    FFDivider().padding(.leading, 52)
-
-                    FFGlanceRow(
-                        icon: "chart.bar.fill",
-                        iconBg: Color.ffSurface2,
-                        iconColor: Color.ffInk3,
-                        label: "Avg / Ziplock",
-                        value: stashBags.isEmpty ? "—" : UnitConversion.formatted(avgOz, in: unit),
-                        detail: "per bag"
-                    )
-                }
-            }
-        }
-    }
-
     // MARK: - Use Soon Section
 
     private var useSoonSection: some View {
@@ -352,6 +335,41 @@ struct HomeView: View {
             }
         }
     }
+
+    // MARK: - Recently Used
+
+    @ViewBuilder
+    private var recentlyUsedSection: some View {
+        let recent = Array(recentUsed.prefix(3))
+        if !recent.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    FFEyebrow(text: "RECENTLY USED")
+                    Spacer()
+                    if let onShowHistory {
+                        Button { onShowHistory() } label: {
+                            Text("See all")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Color.ffTerra)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                FFCard(padding: 0) {
+                    VStack(spacing: 0) {
+                        ForEach(Array(recent.enumerated()), id: \.element.id) { idx, event in
+                            FFRecentUsedRow(event: event, preferredUnit: unit)
+                            if idx < recent.count - 1 {
+                                FFDivider().padding(.leading, 16)
+                            }
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Supporting views
@@ -376,46 +394,6 @@ struct FFStatPill: View {
         .background(Color.ffSurface2)
         .clipShape(Capsule())
         .overlay(Capsule().stroke(Color.ffLine, lineWidth: 0.5))
-    }
-}
-
-struct FFGlanceRow: View {
-    let icon: String
-    let iconBg: Color
-    let iconColor: Color
-    let label: String
-    let value: String
-    let detail: String
-
-    var body: some View {
-        HStack(spacing: Space.m) {
-            ZStack {
-                RoundedRectangle(cornerRadius: IconTile.radius)
-                    .fill(iconBg)
-                    .frame(width: IconTile.size, height: IconTile.size)
-                Image(systemName: icon)
-                    .font(.system(size: IconTile.iconPt, weight: .semibold))
-                    .foregroundStyle(iconColor)
-            }
-
-            Text(label)
-                .font(.system(size: 15))
-                .foregroundStyle(Color.ffInk2)
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(value)
-                    .font(.system(size: 16, weight: .regular, design: .serif))
-                    .foregroundStyle(Color.ffInk)
-                if !detail.isEmpty {
-                    Text(detail)
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(Color.ffInk3)
-                }
-            }
-        }
-        .padding(.vertical, Space.m)
     }
 }
 
@@ -481,12 +459,45 @@ struct FFExpiringRow: View {
     }
 }
 
-extension DateFormatter {
-    static let shortDate: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "MMM d"
+struct FFRecentUsedRow: View {
+    let event: UsageEvent
+    let preferredUnit: MilkUnit
+
+    private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .abbreviated
         return f
     }()
+
+    var body: some View {
+        HStack(spacing: Space.m) {
+            ZStack {
+                RoundedRectangle(cornerRadius: IconTile.radius)
+                    .fill(Color.ffSageSoft)
+                    .frame(width: IconTile.size, height: IconTile.size)
+                Image(systemName: "drop.fill")
+                    .font(.system(size: IconTile.iconPt, weight: .semibold))
+                    .foregroundStyle(Color.ffSage)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(UnitConversion.formatted(event.totalVolumeOz, in: preferredUnit))
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color.ffInk)
+                Text("\(event.totalBags) bag\(event.totalBags == 1 ? "" : "s")")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.ffInk3)
+            }
+
+            Spacer()
+
+            Text(Self.relativeFormatter.localizedString(for: event.timestamp, relativeTo: Date()))
+                .font(.system(size: 13))
+                .foregroundStyle(Color.ffInk3)
+        }
+        .padding(.horizontal, Space.l)
+        .padding(.vertical, Space.m)
+    }
 }
 
 #Preview {
