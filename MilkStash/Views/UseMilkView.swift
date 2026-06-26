@@ -75,6 +75,7 @@ struct UseMilkView: View {
             .onChange(of: vm.includeExpired) { vm.updateRecommendation(bags: stashBags) }
             .onChange(of: bagFieldFocused)   { vm.isBagFieldFocused = bagFieldFocused }
             .onAppear {
+                Haptics.prepare()
                 vm.unit = appSettings.preferredUnit
                 vm.includeExpired = appSettings.includeExpiredInFIFO
             }

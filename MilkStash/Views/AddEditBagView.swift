@@ -57,6 +57,7 @@ struct AddEditBagView: View {
             }
         }
         .onAppear {
+            Haptics.prepare()
             vm.unit = appSettings.preferredUnit
             if let bag = bag {
                 vm.load(from: bag, settings: appSettings)
