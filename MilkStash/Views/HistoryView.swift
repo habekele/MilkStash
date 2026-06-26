@@ -15,7 +15,7 @@ struct HistoryView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: Space.l) {
+                LazyVStack(spacing: Space.l) {
                     headerSection
 
                     if events.isEmpty {
@@ -101,7 +101,8 @@ private struct UsageEventCard: View {
     private var accentSoft: Color { isUsed ? Color.ffSageSoft : Color.ffButterSoft }
 
     var body: some View {
-        FFCard {
+        let lines = event.lines   // decode JSON once per render
+        return FFCard {
             VStack(alignment: .leading, spacing: Space.m) {
                 // Kind badge + time
                 HStack(spacing: Space.s) {
@@ -135,9 +136,9 @@ private struct UsageEventCard: View {
                 }
 
                 // Per-Ziplock snapshot lines
-                if !event.lines.isEmpty {
+                if !lines.isEmpty {
                     VStack(spacing: 0) {
-                        ForEach(Array(event.lines.enumerated()), id: \.element.id) { idx, line in
+                        ForEach(Array(lines.enumerated()), id: \.element.id) { idx, line in
                             if idx > 0 { FFDivider() }
                             HStack(spacing: Space.s) {
                                 VStack(alignment: .leading, spacing: 2) {
