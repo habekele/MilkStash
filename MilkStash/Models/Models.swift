@@ -176,7 +176,7 @@ final class UsageEvent {
 @Model
 final class AppSettings {
     var preferredUnitRaw: String = MilkUnit.oz.rawValue
-    var defaultExpirationMonths: Int = 6
+    var defaultExpirationMonths: Int = 12
     var lowStashThresholdOz: Double = 100.0
     var includeExpiredInFIFO: Bool = false
     var dailyOzGoal: Double = 25.0          // used for "days worth" calculation
@@ -186,7 +186,7 @@ final class AppSettings {
 
     init() {
         self.preferredUnitRaw = MilkUnit.oz.rawValue
-        self.defaultExpirationMonths = 6
+        self.defaultExpirationMonths = 12
         self.lowStashThresholdOz = 100.0
         self.includeExpiredInFIFO = false
         self.dailyOzGoal = 25.0

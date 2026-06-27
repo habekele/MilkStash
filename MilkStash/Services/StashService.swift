@@ -122,7 +122,7 @@ struct StashService {
             .sorted { $0.id.uuidString < $1.id.uuidString }
         if same.count <= 1 { return "" }
         let idx = (same.firstIndex(where: { $0.id == bag.id }) ?? 0) + 1
-        return "Ziplock \(idx) of \(same.count)"
+        return "Brick \(idx) of \(same.count)"
     }
 
     // MARK: - Apply Use

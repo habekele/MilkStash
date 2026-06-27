@@ -71,7 +71,7 @@ struct UseMilkView: View {
                 }
             }
             .onChange(of: vm.bagCountText)   { vm.updateRecommendation(bags: stashBags) }
-            .onChange(of: vm.mode)           { vm.updateRecommendation(bags: stashBags) }
+            .onChange(of: vm.mode)           { Haptics.light(); vm.updateRecommendation(bags: stashBags) }
             .onChange(of: vm.includeExpired) { vm.updateRecommendation(bags: stashBags) }
             .onChange(of: bagFieldFocused)   { vm.isBagFieldFocused = bagFieldFocused }
             .onAppear {
@@ -228,6 +228,7 @@ struct UseMilkView: View {
                 HStack(spacing: 8) {
                     ForEach(bagPresets, id: \.self) { preset in
                         Button {
+                            Haptics.light()
                             vm.bagCountText = "\(preset)"
                         } label: {
                             let isSelected = vm.bagCountText == "\(preset)"
@@ -253,7 +254,7 @@ struct UseMilkView: View {
     private var manualPickerSection: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                FFEyebrow(text: "PICK ZIPLOCKS")
+                FFEyebrow(text: "PICK BRICKS")
                 Spacer()
                 if !vm.manualSelections.isEmpty {
                     Button {
@@ -273,7 +274,7 @@ struct UseMilkView: View {
                         Image(systemName: "tray")
                             .font(.system(size: 32))
                             .foregroundStyle(Color.ffInk4)
-                        Text("No Ziplocks available")
+                        Text("No Bricks available")
                             .font(.system(size: 15))
                             .foregroundStyle(Color.ffInk2)
                     }
@@ -398,7 +399,7 @@ struct UseMilkView: View {
                     Image(systemName: "tray")
                         .font(.system(size: 32))
                         .foregroundStyle(Color.ffInk4)
-                    Text("No eligible Ziplocks found")
+                    Text("No eligible Bricks found")
                         .font(.system(size: 15))
                         .foregroundStyle(Color.ffInk2)
                     if !vm.includeExpired {
@@ -469,6 +470,7 @@ struct ManualBagPickerRow: View {
 
             HStack(spacing: 8) {
                 Button {
+                    Haptics.light()
                     onChange(max(0, selected - 1))
                 } label: {
                     Image(systemName: "minus.circle.fill")
@@ -484,6 +486,7 @@ struct ManualBagPickerRow: View {
                     .frame(minWidth: 22)
 
                 Button {
+                    Haptics.light()
                     onChange(min(bag.milkBagCount, selected + 1))
                 } label: {
                     Image(systemName: "plus.circle.fill")

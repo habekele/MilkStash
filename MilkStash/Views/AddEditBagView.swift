@@ -14,6 +14,11 @@ struct AddEditBagView: View {
 
     @State private var vm = AddEditBagViewModel()
     @FocusState private var focusedField: Field?
+    @State private var showDeleteConfirm = false
+    @State private var showMore = false
+
+    // Brief confirmation shown after a save, before the sheet dismisses.
+    @State private var savedSummary: (oz: Double, bags: Int)? = nil
 
     enum Field { case volumePerBag, count, location, bin, label, notes }
 
@@ -36,10 +41,12 @@ struct AddEditBagView: View {
                 VStack(spacing: 14) {
                     headerArea
                     contentsSection
-                    datesSection
-                    locationSection
-                    detailsSection
-                    if isEditing { statusSection }
+                    freezeDateSection
+                    moreDetailsSection
+                    if isEditing {
+                        statusSection
+                        deleteButton
+                    }
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 4)
@@ -48,6 +55,17 @@ struct AddEditBagView: View {
             .background(Color.ffBg.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
             .navigationBarHidden(true)
+            .overlay {
+                if let s = savedSummary {
+                    savedOverlay(oz: s.oz, bags: s.bags)
+                }
+            }
+            .alert("Delete Brick?", isPresented: $showDeleteConfirm) {
+                Button("Delete", role: .destructive) { deleteBag() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This permanently removes this Brick from your stash. This can't be undone.")
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
@@ -62,7 +80,6 @@ struct AddEditBagView: View {
             if let bag = bag {
                 vm.load(from: bag, settings: appSettings)
             } else {
-                vm.prefillFromLast(allBags)
                 vm.updateExpirationIfNeeded(settings: appSettings)
             }
         }
@@ -85,7 +102,7 @@ struct AddEditBagView: View {
                     .background(Color.ffTerra, in: Capsule())
             }
 
-            Text(isEditing ? "Edit Ziplock" : "New Ziplock")
+            Text(isEditing ? "Edit Brick" : "New Brick")
                 .font(.system(size: 32, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
         }
@@ -96,7 +113,7 @@ struct AddEditBagView: View {
     // MARK: - Contents
 
     private var contentsSection: some View {
-        themedSection(title: "ZIPLOCK CONTENTS") {
+        themedSection(title: "BRICK CONTENTS") {
             VStack(spacing: 0) {
                 // Unit
                 row {
@@ -110,6 +127,7 @@ struct AddEditBagView: View {
                     .pickerStyle(.segmented)
                     .frame(width: 110)
                     .tint(Color.ffTerra)
+                    .onChange(of: vm.unit) { Haptics.light() }
                 }
                 FFDivider()
 
@@ -139,10 +157,11 @@ struct AddEditBagView: View {
 
                 // Bag count stepper
                 row {
-                    rowLabel(icon: "square.stack.3d.up", label: "Milk bags in Ziplock")
+                    rowLabel(icon: "square.stack.3d.up", label: "Milk bags in Brick")
                 } value: {
                     HStack(spacing: 8) {
                         Button {
+                            Haptics.light()
                             let c = max(1, (Int(vm.milkBagCountText) ?? 1) - 1)
                             vm.milkBagCountText = "\(c)"
                         } label: {
@@ -161,6 +180,7 @@ struct AddEditBagView: View {
                             .frame(width: 36)
 
                         Button {
+                            Haptics.light()
                             let c = (Int(vm.milkBagCountText) ?? 0) + 1
                             vm.milkBagCountText = "\(c)"
                         } label: {
@@ -174,7 +194,7 @@ struct AddEditBagView: View {
 
                 if vm.computedTotalOz > 0 {
                     HStack {
-                        Text("Total in Ziplock")
+                        Text("Total in Brick")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundStyle(Color.ffInk2)
                         Spacer()
@@ -219,6 +239,7 @@ struct AddEditBagView: View {
                 HStack(spacing: 8) {
                     ForEach([2.0, 3.0, 4.0, 5.0, 6.0], id: \.self) { preset in
                         Button {
+                            Haptics.light()
                             vm.volumePerBagText = String(format: "%.0f", preset)
                         } label: {
                             let isSelected = vm.volumePerBagText == String(format: "%.0f", preset)
@@ -239,10 +260,10 @@ struct AddEditBagView: View {
         .padding(.vertical, 8)
     }
 
-    // MARK: - Dates
+    // MARK: - Freeze date (core)
 
-    private var datesSection: some View {
-        themedSection(title: "DATES") {
+    private var freezeDateSection: some View {
+        themedSection(title: "FROZEN ON") {
             VStack(spacing: 0) {
                 row {
                     rowLabel(icon: "snowflake", label: "Freeze date")
@@ -255,30 +276,71 @@ struct AddEditBagView: View {
                         }
                 }
                 FFDivider()
+                HStack {
+                    rowLabel(icon: "hourglass", label: "Expires")
+                    Spacer()
+                    Text(DateFormatter.freeze.string(from: vm.useCustomExpiration ? vm.expirationDate : computedExpiration))
+                        .font(.system(size: 14, design: .monospaced))
+                        .foregroundStyle(Color.ffInk3)
+                }
+                .padding(.vertical, 10)
+            }
+        }
+    }
 
+    // MARK: - More details (collapsed by default)
+
+    private var moreDetailsSection: some View {
+        VStack(spacing: 14) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showMore.toggle() }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "slider.horizontal.3")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.ffInk3)
+                    Text("MORE DETAILS")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .tracking(1.2)
+                        .foregroundStyle(Color.ffInk2)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.ffInk3)
+                        .rotationEffect(.degrees(showMore ? 180 : 0))
+                }
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if showMore {
+                expirationSection
+                locationSection
+                detailsSection
+            }
+        }
+    }
+
+    // MARK: - Expiration override
+
+    private var expirationSection: some View {
+        themedSection(title: "EXPIRATION") {
+            VStack(spacing: 0) {
                 Toggle(isOn: $vm.useCustomExpiration) {
                     rowLabel(icon: "calendar.badge.clock", label: "Custom expiration")
                 }
                 .tint(Color.ffTerra)
                 .padding(.vertical, 10)
 
-                FFDivider()
-
                 if vm.useCustomExpiration {
+                    FFDivider()
                     row {
                         rowLabel(icon: "hourglass", label: "Expires")
                     } value: {
                         DatePicker("", selection: $vm.expirationDate, displayedComponents: .date)
                             .labelsHidden()
                             .tint(Color.ffTerra)
-                    }
-                } else {
-                    row {
-                        rowLabel(icon: "hourglass", label: "Expires")
-                    } value: {
-                        Text(DateFormatter.freeze.string(from: computedExpiration))
-                            .font(.system(size: 14, design: .monospaced))
-                            .foregroundStyle(Color.ffInk3)
                     }
                 }
             }
@@ -408,6 +470,27 @@ struct AddEditBagView: View {
         }
     }
 
+    // MARK: - Delete
+
+    private var deleteButton: some View {
+        Button(role: .destructive) {
+            showDeleteConfirm = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "trash")
+                Text("Delete Brick")
+            }
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Color.milkDanger)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color.milkDanger.opacity(0.10), in: RoundedRectangle(cornerRadius: Radius.l))
+            .overlay(RoundedRectangle(cornerRadius: Radius.l).stroke(Color.milkDanger.opacity(0.25), lineWidth: 0.5))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 4)
+    }
+
     // MARK: - Layout helpers
 
     private func themedSection<Content: View>(
@@ -449,17 +532,68 @@ struct AddEditBagView: View {
         StashService.expirationDate(from: vm.freezeDate, months: appSettings.defaultExpirationMonths)
     }
 
+    private func deleteBag() {
+        guard let bag = bag else { return }
+        context.delete(bag)
+        do {
+            try context.save()
+            Haptics.warning()
+            // Defer dismiss so the haptic plays before the sheet tears down.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                dismiss()
+            }
+        } catch {
+            print("AddEditBagView: delete failed:", error)
+        }
+    }
+
     private func save() {
         guard vm.validate() else {
             Haptics.warning()
             return
         }
+        // Capture totals before saving for the confirmation card.
+        let totalOz = vm.computedTotalOz
+        let bags = vm.milkBagCount
         if vm.save(bag: bag, context: context, settings: appSettings) {
             Haptics.success()
-            dismiss()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                savedSummary = (totalOz, bags)
+            }
+            // Hold the card briefly (also lets the success haptic play on device)
+            // before dismissing the sheet.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                dismiss()
+            }
         } else {
             Haptics.warning()
         }
+    }
+
+    private func savedOverlay(oz: Double, bags: Int) -> some View {
+        ZStack {
+            Color.black.opacity(0.18).ignoresSafeArea()
+            VStack(spacing: 14) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(Color.ffSage)
+                Text(isEditing ? "Saved" : "Added to stash")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(Color.ffInk2)
+                Text(UnitConversion.formatted(oz, in: vm.unit))
+                    .font(.system(size: 30, weight: .semibold, design: .serif))
+                    .foregroundStyle(Color.ffInk)
+                Text("\(bags) milk bag\(bags == 1 ? "" : "s")")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.ffInk3)
+            }
+            .padding(.horizontal, 32)
+            .padding(.vertical, 28)
+            .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: Radius.hero))
+            .overlay(RoundedRectangle(cornerRadius: Radius.hero).stroke(Color.ffLine, lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.15), radius: 24, x: 0, y: 8)
+        }
+        .transition(.opacity)
     }
 }
 

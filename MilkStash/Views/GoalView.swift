@@ -79,7 +79,7 @@ struct GoalView: View {
 
     private var milestoneDefs: [(oz: Double, label: String)] {
         let defs: [(oz: Double, label: String)] = [
-            (1,                           "First Ziplock frozen"),
+            (1,                           "First Brick frozen"),
             (100,                         "First 100 oz"),
             (s.effectiveDailyOzGoal * 14, "Two weeks of supply"),
             (s.effectiveDailyOzGoal * 30, "One month of supply"),

@@ -19,6 +19,7 @@ struct InventoryView: View {
     @State private var bagToDiscard: MilkBag? = nil
     @State private var showDiscardConfirm = false
     @State private var showFilters = false
+    @State private var showOther = false
 
     private var filteredBags: [MilkBag] { vm.filtered(allBags) }
     private var stashBags: [MilkBag] { allBags.filter { $0.status == .inStash } }
@@ -27,6 +28,14 @@ struct InventoryView: View {
     private var totalStashOz: Double { stashBags.map(\.totalVolumeOz).reduce(0, +) }
     private var ziplockCount: Int    { stashBags.count }
     private var bagCount: Int        { stashBags.map(\.milkBagCount).reduce(0, +) }
+
+    // Days until the soonest-expiring brick in stash (nil if stash empty)
+    private var soonestExpiryDays: Int? {
+        guard let soonest = stashBags.map(\.expirationDate).min() else { return nil }
+        return Calendar.current.dateComponents([.day],
+            from: Calendar.current.startOfDay(for: Date()),
+            to: soonest).day
+    }
 
     // Days threshold for "Use Soon" group — matches the expiring-soon filter chip
     private let useSoonDays = 30
@@ -70,13 +79,13 @@ struct InventoryView: View {
                 FilterSortSheet(vm: vm, allBags: allBags)
                     .presentationDetents([.medium, .large])
             }
-            .alert("Delete Ziplock?", isPresented: $showDeleteConfirm, presenting: bagToDelete) { bag in
+            .alert("Delete Brick?", isPresented: $showDeleteConfirm, presenting: bagToDelete) { bag in
                 Button("Delete", role: .destructive) { delete(bag) }
                 Button("Cancel", role: .cancel) {}
             } message: { bag in
-                Text("This will permanently remove the Ziplock frozen on \(DateFormatter.freeze.string(from: bag.freezeDate)).")
+                Text("This will permanently remove the Brick frozen on \(DateFormatter.freeze.string(from: bag.freezeDate)).")
             }
-            .alert("Discard Ziplock?", isPresented: $showDiscardConfirm, presenting: bagToDiscard) { bag in
+            .alert("Discard Brick?", isPresented: $showDiscardConfirm, presenting: bagToDiscard) { bag in
                 Button("Discard", role: .destructive) {
                     do {
                         try StashService.discard(bag: bag, unit: appSettings.preferredUnit, context: context)
@@ -85,7 +94,7 @@ struct InventoryView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { bag in
-                Text("Mark the Ziplock frozen on \(DateFormatter.freeze.string(from: bag.freezeDate)) as discarded?")
+                Text("Mark the Brick frozen on \(DateFormatter.freeze.string(from: bag.freezeDate)) as discarded?")
             }
         }
     }
@@ -125,7 +134,7 @@ struct InventoryView: View {
                             .foregroundStyle(Color.ffTerra)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Add Ziplock")
+                    .accessibilityLabel("Add Brick")
                 }
             }
 
@@ -133,10 +142,77 @@ struct InventoryView: View {
                 .font(.system(size: 34, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
 
-            // Eyebrow with counts
-            let unit = appSettings.preferredUnit
-            FFEyebrow(text: "\(ziplockCount) ZIPLOCKS · \(bagCount) BAGS · \(UnitConversion.formatted(totalStashOz, in: unit))")
+            summaryStrip
+                .padding(.top, 4)
         }
+    }
+
+    // MARK: - Summary strip
+
+    private var summaryStrip: some View {
+        let unit = appSettings.preferredUnit
+        return HStack(spacing: 8) {
+            summaryTile(
+                value: UnitConversion.formatted(totalStashOz, in: unit),
+                caption: "IN STASH",
+                bg: Color.ffSurface, border: Color.ffLine,
+                fg: Color.ffInk, capFg: Color.ffInk3
+            )
+            summaryTile(
+                value: "\(ziplockCount) brick\(ziplockCount == 1 ? "" : "s")",
+                caption: "\(bagCount) BAGS",
+                bg: Color.ffSurface, border: Color.ffLine,
+                fg: Color.ffInk, capFg: Color.ffInk3
+            )
+            useNextTile
+        }
+    }
+
+    @ViewBuilder
+    private var useNextTile: some View {
+        if let d = soonestExpiryDays {
+            if d < 0 {
+                summaryTile(value: "Overdue", caption: "USE NOW",
+                            bg: Color.milkDanger.opacity(0.10),
+                            border: Color.milkDanger.opacity(0.25),
+                            fg: Color.milkDanger, capFg: Color.milkDanger)
+            } else {
+                let urgent = d <= 14
+                summaryTile(value: d == 0 ? "Today" : "\(d) day\(d == 1 ? "" : "s")",
+                            caption: "USE NEXT",
+                            bg: urgent ? Color.ffButterSoft : Color.ffSurface,
+                            border: urgent ? Color.ffButter.opacity(0.3) : Color.ffLine,
+                            fg: urgent ? Color.ffButter : Color.ffInk,
+                            capFg: urgent ? Color.ffButter : Color.ffInk3)
+            }
+        } else {
+            summaryTile(value: "—", caption: "USE NEXT",
+                        bg: Color.ffSurface, border: Color.ffLine,
+                        fg: Color.ffInk3, capFg: Color.ffInk3)
+        }
+    }
+
+    private func summaryTile(value: String, caption: String,
+                             bg: Color, border: Color,
+                             fg: Color, capFg: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(value)
+                .font(.system(size: 18, weight: .regular, design: .serif))
+                .foregroundStyle(fg)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(caption)
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .tracking(0.8)
+                .foregroundStyle(capFg)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background(bg)
+        .clipShape(RoundedRectangle(cornerRadius: Radius.l))
+        .overlay(RoundedRectangle(cornerRadius: Radius.l).stroke(border, lineWidth: 0.5))
     }
 
     // MARK: - Search Bar
@@ -219,7 +295,7 @@ struct InventoryView: View {
 
             Spacer()
 
-            Text("\(filteredBags.count) items")
+            Text("\(filteredBags.count) shown")
                 .font(.system(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(Color.ffInk3)
         }
@@ -232,77 +308,116 @@ struct InventoryView: View {
             if !useSoonBags.isEmpty {
                 inventoryGroup(
                     title: "USE SOON",
-                    dotColor: Color.ffTerra,
+                    accent: Color.ffButter,
                     bags: useSoonBags
                 )
             }
             if !plentyBags.isEmpty {
                 inventoryGroup(
                     title: "PLENTY OF TIME",
-                    dotColor: Color.ffSage,
+                    accent: Color.ffSage,
                     bags: plentyBags
                 )
             }
             if !otherBags.isEmpty {
                 inventoryGroup(
                     title: "OTHER",
-                    dotColor: Color.ffInk3,
-                    bags: otherBags
+                    accent: Color.ffInk3,
+                    bags: otherBags,
+                    collapsible: true
                 )
             }
         }
     }
 
-    private func inventoryGroup(title: String, dotColor: Color, bags: [MilkBag]) -> some View {
+    private func inventoryGroup(title: String, accent: Color, bags: [MilkBag],
+                                collapsible: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Group header
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(dotColor)
-                    .frame(width: 7, height: 7)
-                FFEyebrow(text: title)
+            if collapsible {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { showOther.toggle() }
+                } label: {
+                    groupHeader(title: title, accent: accent, count: bags.count,
+                                chevron: showOther ? "chevron.up" : "chevron.down")
+                }
+                .buttonStyle(.plain)
+
+                if showOther {
+                    groupCard(accent: accent, bags: bags)
+                }
+            } else {
+                groupHeader(title: title, accent: accent, count: bags.count, chevron: nil)
+                groupCard(accent: accent, bags: bags)
             }
+        }
+    }
 
-            FFCard(padding: 0) {
-                VStack(spacing: 0) {
-                    ForEach(Array(bags.enumerated()), id: \.element.id) { idx, bag in
-                        FFInventoryRow(
-                            bag: bag,
-                            allBags: allBags,
-                            preferredUnit: appSettings.preferredUnit
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture { editingBag = bag }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                bagToDelete = bag
-                                showDeleteConfirm = true
-                            } label: { Label("Delete", systemImage: "trash") }
+    private func groupHeader(title: String, accent: Color, count: Int, chevron: String?) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(accent)
+                .frame(width: 7, height: 7)
+            FFEyebrow(text: "\(title) · \(count)")
+            Spacer()
+            if let chevron {
+                Image(systemName: chevron)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.ffInk3)
+            }
+        }
+        .contentShape(Rectangle())
+    }
 
+    private func groupCard(accent: Color, bags: [MilkBag]) -> some View {
+        HStack(spacing: 0) {
+            // Urgency color rail
+            Rectangle()
+                .fill(accent)
+                .frame(width: 3)
+
+            VStack(spacing: 0) {
+                ForEach(Array(bags.enumerated()), id: \.element.id) { idx, bag in
+                    FFInventoryRow(
+                        bag: bag,
+                        allBags: allBags,
+                        preferredUnit: appSettings.preferredUnit
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture { editingBag = bag }
+                    .contextMenu {
+                        Button {
+                            editingBag = bag
+                        } label: { Label("Edit", systemImage: "pencil") }
+
+                        if bag.status == .inStash {
                             Button {
                                 bagToDiscard = bag
                                 showDiscardConfirm = true
                             } label: { Label("Discard", systemImage: "xmark.circle") }
-                            .tint(Color.ffButter)
-                        }
-                        .swipeActions(edge: .leading) {
-                            if bag.status != .inStash {
-                                Button {
-                                    bag.status = .inStash
-                                    do { try context.save() } catch { print("InventoryView: save failed:", error) }
-                                } label: { Label("Restore", systemImage: "arrow.uturn.left") }
-                                .tint(Color.ffSage)
-                            }
+                        } else {
+                            Button {
+                                bag.status = .inStash
+                                do { try context.save() } catch { print("InventoryView: save failed:", error) }
+                            } label: { Label("Restore", systemImage: "arrow.uturn.left") }
                         }
 
-                        if idx < bags.count - 1 {
-                            FFDivider().padding(.leading, 16)
-                        }
+                        Button(role: .destructive) {
+                            bagToDelete = bag
+                            showDeleteConfirm = true
+                        } label: { Label("Delete", systemImage: "trash") }
+                    }
+
+                    if idx < bags.count - 1 {
+                        FFDivider().padding(.leading, 16)
                     }
                 }
-                .padding(.vertical, 4)
             }
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity)
+            .background(Color.ffSurface)
         }
+        .clipShape(RoundedRectangle(cornerRadius: Radius.xl))
+        .overlay(RoundedRectangle(cornerRadius: Radius.xl).stroke(Color.ffLine, lineWidth: 0.5))
     }
 
     // MARK: - Empty State
@@ -312,11 +427,11 @@ struct InventoryView: View {
             Image(systemName: "tray.fill")
                 .font(.system(size: 56))
                 .foregroundStyle(Color.ffTerra.opacity(0.5))
-            Text(vm.searchText.isEmpty ? "No Ziplocks yet" : "No matching Ziplocks")
+            Text(vm.searchText.isEmpty ? "No Bricks yet" : "No matching Bricks")
                 .font(.system(size: 20, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
             Text(vm.searchText.isEmpty
-                 ? "Tap + to add your first Ziplock"
+                 ? "Tap + to add your first Brick"
                  : "Try adjusting your search or filters")
                 .font(.subheadline)
                 .foregroundStyle(Color.ffInk2)
@@ -406,11 +521,11 @@ struct FFInventoryRow: View {
             .clipShape(RoundedRectangle(cornerRadius: Radius.s))
             .frame(width: 36)
 
-            VStack(alignment: .leading, spacing: 4) {
-                // Ziplock label
+            VStack(alignment: .leading, spacing: 5) {
+                // Brick label
                 HStack(spacing: 6) {
                     Text(DateFormatter.freeze.string(from: bag.freezeDate))
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Color.ffInk)
                     if !seq.isEmpty {
                         Text(seq)
@@ -419,23 +534,11 @@ struct FFInventoryRow: View {
                     }
                 }
 
-                // Bag count × volume
-                HStack(spacing: 4) {
-                    Text("\(bag.milkBagCount) × \(UnitConversion.formatted(bag.volumePerBagOz, in: preferredUnit))")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.ffInk2)
-                }
-
-                // Mini bag dots
-                if bag.milkBagCount > 0 {
-                    miniBagDots
-                }
-
-                // Tags
+                // Tags (only when relevant)
                 HStack(spacing: 5) {
                     if bag.isExpired         { TagBadge("Expired", color: .milkDanger) }
                     else if bag.isExpiringSoon(within: 14) {
-                        TagBadge("Exp \(max(daysLeft, 0))d", color: Color.ffButter)
+                        TagBadge("Use in \(max(daysLeft, 0))d", color: Color.ffButter)
                     }
                     if bag.status == .used      { TagBadge("Used", color: Color.ffInk3) }
                     if bag.status == .discarded { TagBadge("Discarded", color: .milkDanger) }
@@ -444,13 +547,14 @@ struct FFInventoryRow: View {
 
             Spacer(minLength: 6)
 
-            VStack(alignment: .trailing, spacing: 3) {
+            // Single clean volume summary
+            VStack(alignment: .trailing, spacing: 2) {
                 Text(UnitConversion.formatted(bag.totalVolumeOz, in: preferredUnit))
-                    .font(.system(size: 17, weight: .regular, design: .serif))
+                    .font(.system(size: 18, weight: .regular, design: .serif))
                     .foregroundStyle(Color.ffInk)
                     .monospacedDigit()
-                Text("EXP \(DateFormatter.expiry.string(from: bag.expirationDate))")
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                Text("\(bag.milkBagCount) bag\(bag.milkBagCount == 1 ? "" : "s")")
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.ffInk3)
             }
 
@@ -460,24 +564,6 @@ struct FFInventoryRow: View {
         }
         .padding(.horizontal, Space.l)
         .padding(.vertical, Space.m)
-    }
-
-    private var miniBagDots: some View {
-        HStack(spacing: 3) {
-            let count = min(bag.milkBagCount, 10)
-            ForEach(0..<count, id: \.self) { _ in
-                let dotColor: Color = bag.isExpired ? Color.milkDanger
-                    : bag.isExpiringSoon(within: 14) ? Color.ffButter : Color.ffSage
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(dotColor)
-                    .frame(width: 8, height: 10)
-            }
-            if bag.milkBagCount > 10 {
-                Text("+\(bag.milkBagCount - 10)")
-                    .font(.system(size: 8, design: .monospaced))
-                    .foregroundStyle(Color.ffInk3)
-            }
-        }
     }
 }
 

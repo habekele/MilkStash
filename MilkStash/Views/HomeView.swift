@@ -201,7 +201,7 @@ struct HomeView: View {
     // Hero footer stat pills — Ziplocks · Milk Bags · Oldest.
     // Falls back to two rows on narrow widths / long mL values so nothing clips.
     private var heroStatPills: some View {
-        let ziplockPill = FFStatPill(value: "\(ziplocks)", label: ziplocks == 1 ? "Ziplock" : "Ziplocks", icon: "bag.fill", color: Color.ffTerra)
+        let ziplockPill = FFStatPill(value: "\(ziplocks)", label: ziplocks == 1 ? "Brick" : "Bricks", icon: "bag.fill", color: Color.ffTerra)
         let bagPill     = FFStatPill(value: "\(milkBags)", label: milkBags == 1 ? "Milk Bag" : "Milk Bags", icon: "drop.fill", color: Color.ffInk3)
         let oldestPill  = FFStatPill(value: oldestBagAge, label: "oldest", icon: "calendar.badge.clock", color: Color.ffInk3)
 
@@ -248,7 +248,7 @@ struct HomeView: View {
                 quickActionButton(
                     icon: "plus.circle.fill",
                     title: "Log a session",
-                    subtitle: "Add new Ziplock",
+                    subtitle: "Add new Brick",
                     style: .primary
                 ) { showAddBag = true }
                 .frame(width: buttonWidth)
@@ -330,7 +330,7 @@ struct HomeView: View {
 
             if expiring.isEmpty {
                 FFEncouragement(
-                    message: "No Ziplocks expiring within \(vm.expiringSoonFilter) days. You're on track!",
+                    message: "No Bricks expiring within \(vm.expiringSoonFilter) days. You're on track!",
                     icon: "checkmark.seal.fill"
                 )
             } else {

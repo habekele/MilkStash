@@ -125,21 +125,6 @@ final class AddEditBagViewModel {
         expirationDate = StashService.expirationDate(from: freezeDate, months: settings.defaultExpirationMonths)
     }
 
-    /// Seed a brand-new Ziplock with the most recent session's location, bin, and
-    /// volume so repeat logging is near one-tap. Values stay fully editable.
-    func prefillFromLast(_ bags: [MilkBag]) {
-        guard let last = bags
-            .filter({ $0.status == .inStash })
-            .max(by: { $0.freezeDate < $1.freezeDate })
-        else { return }
-
-        location = last.location
-        slotBin  = last.slotBin
-        // Express the last per-bag volume in the form's current (preferred) unit.
-        let value = UnitConversion.convert(last.volumePerBagOz, from: .oz, to: unit)
-        volumePerBagText = String(format: "%.1f", value)
-    }
-
     func validate() -> Bool {
         guard let vol = Double(volumePerBagText), vol > 0 else {
             validationError = "Volume per bag must be greater than 0."

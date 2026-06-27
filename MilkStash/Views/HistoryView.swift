@@ -142,7 +142,7 @@ private struct UsageEventCard: View {
                             if idx > 0 { FFDivider() }
                             HStack(spacing: Space.s) {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text(line.labelCode.isEmpty ? "Ziplock" : line.labelCode)
+                                    Text(line.labelCode.isEmpty ? "Brick" : line.labelCode)
                                         .font(.system(size: 14, weight: .medium))
                                         .foregroundStyle(Color.ffInk)
                                     Text("Frozen \(DateFormatter.freeze.string(from: line.freezeDate))")
