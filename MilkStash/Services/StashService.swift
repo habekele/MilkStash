@@ -27,6 +27,71 @@ struct StashService {
         return totalOz / dailyOz
     }
 
+    // MARK: - Build & drawdown rates
+
+    /// Average oz/day *frozen* over the trailing `days` window. Mirrors the
+    /// original GoalView.dailyBuildRate: prefer recent freezes, fall back to a
+    /// lifetime average (floored at 30 days) when there's nothing recent.
+    /// Pass all bags regardless of status — a bag counts as "built" the day it
+    /// was frozen, even if later used.
+    static func buildRate(bags: [MilkBag], over days: Int = 14, asOf: Date = Date()) -> Double {
+        let cal = Calendar.current
+        let cutoff = cal.date(byAdding: .day, value: -days, to: asOf) ?? asOf
+        let recent = bags.filter { $0.freezeDate >= cutoff }
+        if !recent.isEmpty {
+            let recentOz = recent.map(\.totalVolumeOz).reduce(0, +)
+            return recentOz / Double(days)
+        }
+
+        guard !bags.isEmpty,
+              let oldest = bags.map(\.freezeDate).min() else { return 0 }
+        let span = max(cal.dateComponents([.day], from: oldest, to: asOf).day ?? 30, 30)
+        let totalOz = bags.map(\.totalVolumeOz).reduce(0, +)
+        return totalOz / Double(span)
+    }
+
+    /// Average oz/day *consumed* over the trailing `days` window. Counts `.used`
+    /// events only — discards are loss, not feeding throughput, so they don't
+    /// shorten the projected runway.
+    static func consumptionRate(events: [UsageEvent], over days: Int = 14, asOf: Date = Date()) -> Double {
+        guard days > 0 else { return 0 }
+        let cal = Calendar.current
+        let cutoff = cal.date(byAdding: .day, value: -days, to: asOf) ?? asOf
+        let usedOz = events
+            .filter { $0.kind == .used && $0.timestamp >= cutoff }
+            .map(\.totalVolumeOz)
+            .reduce(0, +)
+        return usedOz / Double(days)
+    }
+
+    /// Net daily change in stash. Negative = draining, positive = still growing.
+    static func netDailyRate(consumption: Double, build: Double) -> Double {
+        build - consumption
+    }
+
+    /// Calendar days until the stash hits zero at the current net drain rate.
+    /// Returns nil when not meaningfully draining (net >= ~0), so callers can
+    /// show "holding steady" instead of an infinite countdown.
+    static func daysOfStashRemaining(currentOz: Double, netDailyRate: Double) -> Int? {
+        let drain = -netDailyRate
+        guard drain > 0.01, currentOz > 0 else { return nil }
+        return Int(ceil(currentOz / drain))
+    }
+
+    /// Projected date the stash empties at the current net drain rate, or nil if
+    /// not draining.
+    static func projectedDepletionDate(currentOz: Double, netDailyRate: Double, from: Date = Date()) -> Date? {
+        guard let days = daysOfStashRemaining(currentOz: currentOz, netDailyRate: netDailyRate) else { return nil }
+        return Calendar.current.date(byAdding: .day, value: days, to: from)
+    }
+
+    /// Whether observed behavior suggests the user has shifted into drawdown
+    /// (using faster than freezing). Advisory only — the Journey tab uses this to
+    /// *offer* a switch, never to override the user's explicit journeyMode.
+    static func suggestsDrawdown(consumption: Double, build: Double) -> Bool {
+        consumption > build && consumption > 0.01
+    }
+
     // MARK: - Expiration
 
     static func expiringSoon(bags: [MilkBag], within days: Int) -> [MilkBag] {

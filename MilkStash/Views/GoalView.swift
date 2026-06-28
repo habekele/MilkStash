@@ -9,12 +9,15 @@ struct GoalView: View {
     @Query(filter: #Predicate<MilkBag> { $0.statusRaw == "In Stash" })
     private var stashBags: [MilkBag]
     @Query private var allBags: [MilkBag]
+    @Query private var usageEvents: [UsageEvent]
     @Environment(\.modelContext) private var context
 
     private var s: AppSettings { settings.first ?? AppSettings() }
+    private var mode: JourneyMode { s.journeyMode }
 
     @State private var editingGoal = false
-    @State private var draftMonths = 3
+    @State private var setupInitialMonths = 3
+    @State private var showDrawdownNudge = true
 
     // MARK: - Derived numbers
 
@@ -32,24 +35,36 @@ struct GoalView: View {
     private var ozRemaining: Double { max(targetOz - currentOz, 0) }
     private var isGoalReached: Bool { currentOz >= targetOz }
 
-    private var dailyBuildRate: Double {
-        let cal = Calendar.current
-        let twoWeeksAgo = cal.date(byAdding: .day, value: -14, to: Date()) ?? Date()
-        let recentBags = allBags.filter { $0.freezeDate >= twoWeeksAgo }
+    // Freeze rate (oz/day). Shares one definition with the drawdown math via StashService.
+    private var dailyBuildRate: Double { StashService.buildRate(bags: allBags, over: 14) }
+    private var weeklyBuildRate: Double { dailyBuildRate * 7.0 }
 
-        if !recentBags.isEmpty {
-            let recentOz = recentBags.map(\.totalVolumeOz).reduce(0, +)
-            return recentOz / 14.0
-        }
+    // MARK: - Drawdown numbers
+    private var consumptionRate: Double { StashService.consumptionRate(events: usageEvents, over: 14) }
+    private var netRate: Double { StashService.netDailyRate(consumption: consumptionRate, build: dailyBuildRate) }
+    private var daysRemaining: Int? { StashService.daysOfStashRemaining(currentOz: currentOz, netDailyRate: netRate) }
+    private var depletionDate: Date? { StashService.projectedDepletionDate(currentOz: currentOz, netDailyRate: netRate) }
 
-        guard !allBags.isEmpty,
-              let oldestDate = allBags.map(\.freezeDate).min() else { return 0 }
-        let totalDays = max(cal.dateComponents([.day], from: oldestDate, to: Date()).day ?? 30, 30)
-        let totalFrozenOz = allBags.map(\.totalVolumeOz).reduce(0, +)
-        return totalFrozenOz / Double(totalDays)
+    /// Arc fill for the runway: full when holding steady, otherwise scaled to a 90-day horizon.
+    private var runwayProgress: Double {
+        guard let days = daysRemaining else { return 1.0 }
+        return min(Double(days) / 90.0, 1.0)
     }
 
-    private var weeklyBuildRate: Double { dailyBuildRate * 7.0 }
+    /// Runway turns terracotta when the stash will cross the low-stash line within two weeks.
+    private var runwayColor: Color {
+        guard daysRemaining != nil else { return Color.ffSage }
+        let drain = max(-netRate, 0.0001)
+        let daysToLow = (currentOz - s.effectiveLowStashThresholdOz) / drain
+        return daysToLow < 14 ? Color.ffTerra : Color.ffSage
+    }
+
+    /// Bricks that will expire before the stash is projected to empty — i.e. milk
+    /// at risk of being lost to slow drawdown. Drives the "use oldest first" nudge.
+    private var expiringBeforeEmpty: [MilkBag] {
+        guard let empty = depletionDate else { return [] }
+        return stashBags.filter { $0.status == .inStash && $0.expirationDate <= empty }
+    }
 
     private var daysUntilGoal: Int? {
         guard !isGoalReached else { return 0 }
@@ -94,15 +109,15 @@ struct GoalView: View {
             ScrollView {
                 VStack(spacing: Space.xl) {
                     headerArea
-                    progressArcCard
-                    FFEncouragement(
-                        message: isGoalReached
-                            ? "Goal reached! Your baby is well stocked."
-                            : "Every session counts. You're building something wonderful."
-                    )
-                    buildRateSection
+                    heroSection
+                    if mode == .building || mode == .maintaining {
+                        FFEncouragement(message: encouragementMessage)
+                        buildRateSection
+                    }
                     milestonesSection
-                    goalAdjustPanel
+                    if mode == .building || mode == .maintaining {
+                        goalAdjustPanel
+                    }
                 }
                 .padding(.horizontal, Space.screenPad)
                 .padding(.top, Space.s)
@@ -113,7 +128,7 @@ struct GoalView: View {
             .navigationBarHidden(true)
             .sheet(isPresented: $editingGoal) {
                 GoalSetupSheet(
-                    currentMonths: s.goalMonths,
+                    currentMonths: setupInitialMonths,
                     dailyOz: s.effectiveDailyOzGoal
                 ) { months in
                     let target = settings.first ?? {
@@ -126,8 +141,20 @@ struct GoalView: View {
                 }
             }
             .onAppear {
-                draftMonths = s.goalMonths
-                if s.goalMonths == 3 && s.goalStartOz == 0 && stashBags.isEmpty {
+                setupInitialMonths = s.goalMonths
+
+                // Celebration latch: fire once per distinct goal the first time it's met.
+                if let target = settings.first,
+                   currentOz >= targetOz,
+                   target.lastCelebratedGoalDate != target.goalStartDate {
+                    target.goalEverReached = true
+                    target.lastCelebratedGoalDate = target.goalStartDate
+                    target.journeyMode = .celebrating
+                    try? context.save()
+                }
+
+                // Onboarding auto-open only while still building.
+                if s.journeyMode == .building && s.goalMonths == 3 && s.goalStartOz == 0 && stashBags.isEmpty {
                     editingGoal = true
                 }
             }
@@ -136,15 +163,298 @@ struct GoalView: View {
 
     // MARK: - Header
 
+    private var headerEyebrow: String {
+        switch mode {
+        case .celebrating: return "YOU REACHED YOUR GOAL"
+        case .maintaining: return "DRAWING DOWN YOUR STASH"
+        case .complete:    return "JOURNEY COMPLETE"
+        case .building:    return "BUILDING TOWARD \(s.goalMonths) MONTHS"
+        }
+    }
+
+    private var encouragementMessage: String {
+        switch mode {
+        case .maintaining:
+            return "You stocked enough to keep going — now you're drawing it down. That's exactly the plan."
+        default:
+            return "Every session counts. You're building something wonderful."
+        }
+    }
+
     private var headerArea: some View {
         VStack(alignment: .leading, spacing: 6) {
-            FFEyebrow(text: "BUILDING TOWARD \(s.goalMonths) MONTHS")
+            FFEyebrow(text: headerEyebrow)
             Text("Your journey")
                 .font(.system(size: 34, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 4)
+    }
+
+    // MARK: - Hero (mode-driven)
+
+    @ViewBuilder private var heroSection: some View {
+        switch mode {
+        case .building:
+            progressArcCard
+            // Only suggest drawdown once the goal's actually been reached — a parent
+            // still ramping up who logs a feed shouldn't be nudged toward "using down."
+            if showDrawdownNudge, s.goalEverReached,
+               StashService.suggestsDrawdown(consumption: consumptionRate, build: dailyBuildRate) {
+                drawdownNudge
+            }
+        case .celebrating:
+            celebrationCard
+        case .maintaining:
+            drawdownCard
+            goalAchievedChip
+        case .complete:
+            completeCard
+        }
+    }
+
+    // MARK: - Mode transitions
+
+    private func setMode(_ newMode: JourneyMode) {
+        guard let target = settings.first else { return }
+        target.journeyMode = newMode
+        do { try context.save() } catch { print("GoalView: setMode save failed:", error) }
+    }
+
+    private func openGoalSetup(initialMonths: Int, switchToBuilding: Bool) {
+        setupInitialMonths = max(1, min(initialMonths, 12))
+        if switchToBuilding { setMode(.building) }
+        editingGoal = true
+    }
+
+    // MARK: - Drawdown nudge (shown in .building when use outpaces freezing)
+
+    private var drawdownNudge: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "arrow.down.circle")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.ffTerra)
+            Text("Started using your stash? Switch to the drawdown view.")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.ffInk2)
+            Spacer(minLength: 4)
+            Button { setMode(.maintaining) } label: {
+                Text("Switch")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.ffTerra)
+            }
+            .buttonStyle(.plain)
+            Button { showDrawdownNudge = false } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Color.ffInk3)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(14)
+        .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.ffLine, lineWidth: 0.5))
+    }
+
+    // MARK: - Celebration Card (.celebrating)
+
+    private var celebrationCard: some View {
+        FFCard {
+            VStack(spacing: 18) {
+                FFEyebrow(text: "GOAL REACHED")
+
+                ZStack {
+                    FFProgressArc(progress: 1, color: Color.ffLine)
+                    FFProgressArc(progress: 1, color: Color.ffSage)
+                    VStack(spacing: 4) {
+                        Spacer().frame(height: 52)
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 46))
+                            .foregroundStyle(Color.ffSage)
+                    }
+                }
+                .frame(height: 180)
+                .padding(.top, 12)
+
+                VStack(spacing: 6) {
+                    Text("You did it")
+                        .font(.system(size: 30, weight: .regular, design: .serif))
+                        .foregroundStyle(Color.ffInk)
+                    Text("\(s.goalMonths) month\(s.goalMonths == 1 ? "" : "s") of supply, fully stocked.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.ffInk2)
+                        .multilineTextAlignment(.center)
+                    Text("\(UnitConversion.formatted(currentOz, in: s.preferredUnit, decimals: 0)) frozen")
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(Color.ffInk3)
+                }
+
+                VStack(spacing: 10) {
+                    Button { openGoalSetup(initialMonths: s.goalMonths + 1, switchToBuilding: true) } label: {
+                        Text("Keep building")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                            .foregroundStyle(.white)
+                            .background(Color.ffTerra, in: RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button { setMode(.maintaining) } label: {
+                        Text("Start using my stash")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 15)
+                            .foregroundStyle(Color.ffTerra)
+                            .background(Color.ffTerraSoft, in: RoundedRectangle(cornerRadius: 14))
+                    }
+                    .buttonStyle(.plain)
+
+                    Button { setMode(.complete) } label: {
+                        Text("I'm all done")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.ffInk3)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
+                }
+            }
+        }
+        .onAppear { Haptics.success() }
+    }
+
+    // MARK: - Goal-achieved chip (shown above drawdown)
+
+    private var goalAchievedChip: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(Color.ffSage)
+            Text("\(s.goalMonths)-month goal reached")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.ffInk2)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(Color.ffSageSoft, in: Capsule())
+    }
+
+    // MARK: - Drawdown Card (.maintaining)
+
+    private var drawdownCard: some View {
+        FFCard {
+            VStack(spacing: 16) {
+                FFEyebrow(text: "STASH REMAINING")
+
+                ZStack {
+                    FFProgressArc(progress: 1, color: Color.ffLine)
+                    FFProgressArc(progress: runwayProgress, color: runwayColor)
+                    VStack(spacing: 4) {
+                        Spacer().frame(height: 44)
+                        if let days = daysRemaining {
+                            Text("\(days)")
+                                .font(.system(size: 48, weight: .regular, design: .serif))
+                                .foregroundStyle(Color.ffInk)
+                                .contentTransition(.numericText())
+                            Text(days == 1 ? "day left" : "days left")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.ffInk3)
+                        } else {
+                            Text("Holding")
+                                .font(.system(size: 34, weight: .regular, design: .serif))
+                                .foregroundStyle(Color.ffInk)
+                            Text("steady")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.ffInk3)
+                        }
+                    }
+                }
+                .frame(height: 180)
+                .padding(.top, 12)
+
+                if let date = depletionDate {
+                    Text("On track to run out around \(DateFormatter.goalDate.string(from: date))")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.ffInk3)
+                        .multilineTextAlignment(.center)
+                }
+
+                HStack(spacing: 10) {
+                    GoalStatCard(
+                        icon: "cup.and.saucer.fill", iconColor: Color.ffTerra,
+                        title: "using / day",
+                        value: UnitConversion.formatted(consumptionRate, in: s.preferredUnit)
+                    )
+                    GoalStatCard(
+                        icon: "snowflake", iconColor: Color.ffSage,
+                        title: "freezing / day",
+                        value: UnitConversion.formatted(dailyBuildRate, in: s.preferredUnit)
+                    )
+                }
+
+                if !expiringBeforeEmpty.isEmpty {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.ffTerra)
+                        Text("\(expiringBeforeEmpty.count) brick\(expiringBeforeEmpty.count == 1 ? "" : "s") may expire before then — use oldest first.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.ffInk2)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(12)
+                    .background(Color.ffTerraSoft, in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+        }
+    }
+
+    // MARK: - Complete Card (.complete)
+
+    private var completeCard: some View {
+        FFCard {
+            VStack(spacing: 18) {
+                FFEyebrow(text: "JOURNEY COMPLETE")
+                Image(systemName: "heart.circle.fill")
+                    .font(.system(size: 56))
+                    .foregroundStyle(Color.ffSage)
+
+                VStack(spacing: 6) {
+                    Text("Your journey, complete")
+                        .font(.system(size: 26, weight: .regular, design: .serif))
+                        .foregroundStyle(Color.ffInk)
+                    Text("You nourished your baby every step of the way.")
+                        .font(.system(size: 14))
+                        .foregroundStyle(Color.ffInk2)
+                        .multilineTextAlignment(.center)
+                }
+
+                HStack(spacing: 10) {
+                    GoalStatCard(
+                        icon: "drop.fill", iconColor: Color.ffTerra,
+                        title: "in stash now",
+                        value: UnitConversion.formatted(currentOz, in: s.preferredUnit, decimals: 0)
+                    )
+                    GoalStatCard(
+                        icon: "flag.checkered", iconColor: Color.ffSage,
+                        title: "goal hit",
+                        value: "\(s.goalMonths) mo"
+                    )
+                }
+
+                Button { openGoalSetup(initialMonths: s.goalMonths, switchToBuilding: true) } label: {
+                    Text("Set a new goal")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.ffTerra)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 10)
+                        .background(Color.ffTerraSoft, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     // MARK: - Progress Arc Card
@@ -358,8 +668,7 @@ struct GoalView: View {
                 Spacer()
 
                 Button {
-                    draftMonths = s.goalMonths
-                    editingGoal = true
+                    openGoalSetup(initialMonths: s.goalMonths, switchToBuilding: false)
                 } label: {
                     Text("Adjust")
                         .font(.system(size: 14, weight: .semibold))
@@ -586,7 +895,18 @@ extension DateFormatter {
     }()
 }
 
-#Preview {
-    GoalView()
-        .modelContainer(PreviewData.container())
+#Preview("Building") {
+    GoalView().modelContainer(PreviewData.container())
+}
+
+#Preview("Celebrating") {
+    GoalView().modelContainer(PreviewData.container(mode: .celebrating))
+}
+
+#Preview("Drawdown") {
+    GoalView().modelContainer(PreviewData.container(mode: .maintaining))
+}
+
+#Preview("Complete") {
+    GoalView().modelContainer(PreviewData.container(mode: .complete))
 }

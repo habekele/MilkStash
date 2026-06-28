@@ -24,6 +24,16 @@ enum UsageKind: String, Codable, CaseIterable {
     case discarded = "Discarded"
 }
 
+/// Which chapter of the supply journey the user is in. Drives the Journey tab's
+/// primary card. Persisted (not purely derived) so the user's explicit choice at
+/// goal-completion sticks across launches and devices.
+enum JourneyMode: String, Codable, CaseIterable {
+    case building     // climbing toward the goal — progress arc is primary
+    case celebrating  // just reached the goal — show the completion fork
+    case maintaining  // drawing the stash down — days-remaining is primary
+    case complete      // journey closed out — quiet "all done" state
+}
+
 // MARK: - MilkBag Model
 // Represents one Ziplock bag containing multiple individual milk bags.
 
@@ -184,6 +194,11 @@ final class AppSettings {
     var goalStartDate: Date = Date()          // when the user started tracking toward the goal
     var goalStartOz: Double = 0.0          // stash size when they started (for rate calc)
 
+    // Journey lifecycle. All have defaults so CloudKit sync init stays valid.
+    var goalEverReached: Bool = false         // latched true the first time the goal is met; never auto-reset
+    var journeyModeRaw: String = JourneyMode.building.rawValue
+    var lastCelebratedGoalDate: Date? = nil   // the goalStartDate we last celebrated, so re-reaching the same goal doesn't re-fire
+
     init() {
         self.preferredUnitRaw = MilkUnit.oz.rawValue
         self.defaultExpirationMonths = 12
@@ -193,6 +208,14 @@ final class AppSettings {
         self.goalMonths = 3
         self.goalStartDate = Date()
         self.goalStartOz = 0.0
+        self.goalEverReached = false
+        self.journeyModeRaw = JourneyMode.building.rawValue
+        self.lastCelebratedGoalDate = nil
+    }
+
+    var journeyMode: JourneyMode {
+        get { JourneyMode(rawValue: journeyModeRaw) ?? .building }
+        set { journeyModeRaw = newValue.rawValue }
     }
 
     /// Target oz = goalMonths × 30 days × dailyOzGoal

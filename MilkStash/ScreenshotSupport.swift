@@ -17,6 +17,18 @@ enum ScreenshotData {
         let today = cal.startOfDay(for: Date())
         settings.goalStartDate = cal.date(byAdding: .day, value: -42, to: today)!
         settings.goalStartOz = 120.0
+
+        // Optional `-JourneyMode building|celebrating|maintaining|complete` to
+        // demo the Journey lifecycle states in the Simulator. Defaults to building.
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-JourneyMode"), i + 1 < args.count,
+           let m = JourneyMode(rawValue: args[i + 1]) {
+            settings.journeyMode = m
+            if m != .building {
+                settings.goalEverReached = true
+                settings.lastCelebratedGoalDate = settings.goalStartDate
+            }
+        }
         ctx.insert(settings)
 
         // Realistic, photogenic stash — varied volumes, bins, freeze dates.
