@@ -43,6 +43,13 @@ A **"Brick"** (user-facing term) is one physical Ziplock bag holding *N* individ
 ### FIFO logic (`StashService`)
 "Use milk" pulls the oldest bricks first (sorted by `freezeDate`, then `expirationDate`). Individual milk bags must be thawed **whole**, so oz-based planning rounds up (`ceil`). Three entry points: `fifoRecommendation` (by oz), `fifoRecommendationByBags` (by bag count), and `manualPlan` (explicit per-brick selection). `applyUse` records the `UsageEvent` *before* decrementing `milkBagCount`, and flips a brick to `.used` when it hits zero.
 
+### Journey lifecycle (`GoalView` + `AppSettings.journeyMode`)
+The Goal/Journey tab is a **state machine**, not a static progress screen. `AppSettings.journeyMode` (`JourneyMode`: `building` / `celebrating` / `maintaining` / `complete`) drives which hero card `GoalView` shows, and the mode is **persisted** so the user's explicit choice at goal-completion sticks (it is not re-derived from stash volume each render).
+- **Latch**: `GoalView.onAppear` flips `building → celebrating` the first time `currentOz >= goalTargetOz`, setting `goalEverReached = true` and stamping `lastCelebratedGoalDate = goalStartDate`. The stamp gates re-celebration to once *per distinct goal* (bumping months re-celebrates at the new target; a stash wobbling around the line does not). The latch only runs while the Journey tab is open.
+- **Fork**: the celebration card offers Keep building (`→ building`, reopens `GoalSetupSheet` at +1 month) / Start using my stash (`→ maintaining`) / I'm all done (`→ complete`).
+- **Drawdown math lives in `StashService`** (pure): `buildRate` (oz/day frozen, the single shared definition — `GoalView.dailyBuildRate` delegates to it), `consumptionRate` (oz/day from `.used` events only — discards are excluded), `netDailyRate`, `daysOfStashRemaining` (nil = holding steady), `projectedDepletionDate`, `suggestsDrawdown` (advisory nudge only, never auto-switches mode).
+- **Home reconciliation**: `HomeView.days` divides by observed `consumptionRate` once `goalEverReached`, else the planned goal rate — so Home and the drawdown card agree.
+
 ### Navigation & design system (`Views/ContentView.swift`)
 - **Not a `TabView`.** `ContentView` holds all five screens (Home / Inventory / Goal / History / Settings) in a `ZStack`, toggled by `opacity` on a `selectedTab` binding, with a custom `FFTabBar`.
 - The tab bar **hides on scroll-down / reveals on scroll-up** via `TabBarVisibility` (an `ObservableObject` in the environment). A `ScrollView` opts in by calling `.tracksTabBar()`, which is a no-op below iOS 18 (`onScrollGeometryChange`).

@@ -39,7 +39,16 @@ struct HomeView: View {
     // MARK: - Derived values
     private var totalOz: Double   { vm.totalOz(stashBags) }
     private var unit: MilkUnit    { appSettings.preferredUnit }
-    private var days: Double      { vm.daysWorth(stashBags, dailyOz: appSettings.effectiveDailyOzGoal) }
+    // Once the goal's been reached and there's real usage, "days of stash" is
+    // driven by observed consumption so Home agrees with the Journey drawdown
+    // card. Before then (still building), fall back to the planned goal rate.
+    private var days: Double {
+        let observed = StashService.consumptionRate(events: recentUsed, over: 14)
+        let rate = (appSettings.goalEverReached && observed > 0.01)
+            ? observed
+            : appSettings.effectiveDailyOzGoal
+        return vm.daysWorth(stashBags, dailyOz: rate)
+    }
     private var ziplocks: Int     { vm.ziplockCount(stashBags) }
     private var milkBags: Int     { vm.totalMilkBagCount(stashBags) }
 

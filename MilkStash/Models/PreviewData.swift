@@ -5,16 +5,22 @@ import SwiftData
 
 @MainActor
 enum PreviewData {
-    static func container() -> ModelContainer {
+    static func container(mode: JourneyMode = .building) -> ModelContainer {
         let schema = Schema([MilkBag.self, AppSettings.self, UsageEvent.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try! ModelContainer(for: schema, configurations: config)
-        populate(container.mainContext)
+        populate(container.mainContext, mode: mode)
         return container
     }
 
-    static func populate(_ ctx: ModelContext) {
+    static func populate(_ ctx: ModelContext, mode: JourneyMode = .building) {
         let settings = AppSettings()
+        settings.journeyMode = mode
+        if mode != .building {
+            // Anything past building has, by definition, reached the goal at least once.
+            settings.goalEverReached = true
+            settings.lastCelebratedGoalDate = settings.goalStartDate
+        }
         ctx.insert(settings)
 
         let cal = Calendar.current
