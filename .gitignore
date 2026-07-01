@@ -1,2 +1,48 @@
-build/
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# Xcode build output
+build/
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Xcode user-specific state (per-developer, should not be shared)
+xcuserdata/
+*.xcuserstate
+*.xcuserdatad
+*.xcscmblueprint
+*.xccheckout
+
+# Xcode automatically generated / playground
+*.xcscheme.managementplist
+timeline.xctimeline
+playground.xcworkspace
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# CocoaPods (if ever added)
+Pods/
+
+# Carthage (if ever added)
+Carthage/Build/
+
+# Provisioning / signing
+*.mobileprovision
+*.provisionprofile
+
+# Misc
+*.log
+*~
