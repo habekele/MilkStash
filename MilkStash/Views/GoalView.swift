@@ -5,6 +5,11 @@ import SwiftUI
 import SwiftData
 
 struct GoalView: View {
+    /// Whether the Journey tab is the visible tab. The custom tab container keeps
+    /// every tab mounted (opacity-toggled), so `.onAppear` fires once at launch —
+    /// lifecycle checks must key off this instead.
+    var isActive: Bool = true
+
     @Query private var settings: [AppSettings]
     @Query(filter: #Predicate<MilkBag> { $0.statusRaw == "In Stash" })
     private var stashBags: [MilkBag]
@@ -17,7 +22,12 @@ struct GoalView: View {
 
     @State private var editingGoal = false
     @State private var setupInitialMonths = 3
-    @State private var showDrawdownNudge = true
+
+    /// Nudge dismissal persists per goal (stamped with goalStartDate), so it
+    /// doesn't reappear on every launch.
+    private var drawdownNudgeDismissed: Bool {
+        s.drawdownNudgeDismissedForGoal == s.goalStartDate
+    }
 
     // MARK: - Derived numbers
 
@@ -141,22 +151,10 @@ struct GoalView: View {
                 }
             }
             .onAppear {
-                setupInitialMonths = s.goalMonths
-
-                // Celebration latch: fire once per distinct goal the first time it's met.
-                if let target = settings.first,
-                   currentOz >= targetOz,
-                   target.lastCelebratedGoalDate != target.goalStartDate {
-                    target.goalEverReached = true
-                    target.lastCelebratedGoalDate = target.goalStartDate
-                    target.journeyMode = .celebrating
-                    try? context.save()
-                }
-
-                // Onboarding auto-open only while still building.
-                if s.journeyMode == .building && s.goalMonths == 3 && s.goalStartOz == 0 && stashBags.isEmpty {
-                    editingGoal = true
-                }
+                if isActive { runLifecycleChecks() }
+            }
+            .onChange(of: isActive) { _, active in
+                if active { runLifecycleChecks() }
             }
         }
     }
@@ -185,7 +183,7 @@ struct GoalView: View {
         VStack(alignment: .leading, spacing: 6) {
             FFEyebrow(text: headerEyebrow)
             Text("Your journey")
-                .font(.system(size: 34, weight: .regular, design: .serif))
+                .font(.ff(size: 34, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -200,7 +198,7 @@ struct GoalView: View {
             progressArcCard
             // Only suggest drawdown once the goal's actually been reached — a parent
             // still ramping up who logs a feed shouldn't be nudged toward "using down."
-            if showDrawdownNudge, s.goalEverReached,
+            if !drawdownNudgeDismissed, s.goalEverReached,
                StashService.suggestsDrawdown(consumption: consumptionRate, build: dailyBuildRate) {
                 drawdownNudge
             }
@@ -216,10 +214,38 @@ struct GoalView: View {
 
     // MARK: - Mode transitions
 
+    /// Celebration latch + onboarding. Runs each time the Journey tab becomes
+    /// visible (not just on first mount).
+    private func runLifecycleChecks() {
+        setupInitialMonths = s.goalMonths
+
+        // Celebration latch: fire once per distinct goal the first time it's met.
+        if let target = settings.first,
+           currentOz >= targetOz,
+           target.lastCelebratedGoalDate != target.goalStartDate {
+            target.goalEverReached = true
+            target.lastCelebratedGoalDate = target.goalStartDate
+            target.journeyMode = .celebrating
+            try? context.save()
+            Haptics.success()
+        }
+
+        // Onboarding auto-open only while still building.
+        if s.journeyMode == .building && s.goalMonths == 3 && s.goalStartOz == 0 && stashBags.isEmpty {
+            editingGoal = true
+        }
+    }
+
     private func setMode(_ newMode: JourneyMode) {
         guard let target = settings.first else { return }
         target.journeyMode = newMode
         do { try context.save() } catch { print("GoalView: setMode save failed:", error) }
+    }
+
+    private func dismissDrawdownNudge() {
+        guard let target = settings.first else { return }
+        target.drawdownNudgeDismissedForGoal = target.goalStartDate
+        do { try context.save() } catch { print("GoalView: nudge save failed:", error) }
     }
 
     private func openGoalSetup(initialMonths: Int, switchToBuilding: Bool) {
@@ -233,24 +259,27 @@ struct GoalView: View {
     private var drawdownNudge: some View {
         HStack(spacing: 12) {
             Image(systemName: "arrow.down.circle")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.ff(size: 18, weight: .semibold))
                 .foregroundStyle(Color.ffTerra)
             Text("Started using your stash? Switch to the drawdown view.")
-                .font(.system(size: 13))
+                .font(.ff(size: 13))
                 .foregroundStyle(Color.ffInk2)
             Spacer(minLength: 4)
             Button { setMode(.maintaining) } label: {
                 Text("Switch")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.ff(size: 13, weight: .semibold))
                     .foregroundStyle(Color.ffTerra)
             }
             .buttonStyle(.plain)
-            Button { showDrawdownNudge = false } label: {
+            Button { dismissDrawdownNudge() } label: {
                 Image(systemName: "xmark")
-                    .font(.system(size: 11, weight: .bold))
+                    .font(.ff(size: 11, weight: .bold))
                     .foregroundStyle(Color.ffInk3)
+                    .padding(8)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
         }
         .padding(14)
         .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: 16))
@@ -270,7 +299,7 @@ struct GoalView: View {
                     VStack(spacing: 4) {
                         Spacer().frame(height: 52)
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 46))
+                            .font(.ff(size: 46))
                             .foregroundStyle(Color.ffSage)
                     }
                 }
@@ -279,14 +308,14 @@ struct GoalView: View {
 
                 VStack(spacing: 6) {
                     Text("You did it")
-                        .font(.system(size: 30, weight: .regular, design: .serif))
+                        .font(.ff(size: 30, weight: .regular, design: .serif))
                         .foregroundStyle(Color.ffInk)
                     Text("\(s.goalMonths) month\(s.goalMonths == 1 ? "" : "s") of supply, fully stocked.")
-                        .font(.system(size: 14))
+                        .font(.ff(size: 14))
                         .foregroundStyle(Color.ffInk2)
                         .multilineTextAlignment(.center)
                     Text("\(UnitConversion.formatted(currentOz, in: s.preferredUnit, decimals: 0)) frozen")
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.ff(size: 12, design: .monospaced))
                         .foregroundStyle(Color.ffInk3)
                 }
 
@@ -313,7 +342,7 @@ struct GoalView: View {
 
                     Button { setMode(.complete) } label: {
                         Text("I'm all done")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.ff(size: 14, weight: .medium))
                             .foregroundStyle(Color.ffInk3)
                     }
                     .buttonStyle(.plain)
@@ -321,7 +350,6 @@ struct GoalView: View {
                 }
             }
         }
-        .onAppear { Haptics.success() }
     }
 
     // MARK: - Goal-achieved chip (shown above drawdown)
@@ -329,10 +357,10 @@ struct GoalView: View {
     private var goalAchievedChip: some View {
         HStack(spacing: 8) {
             Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 14))
+                .font(.ff(size: 14))
                 .foregroundStyle(Color.ffSage)
             Text("\(s.goalMonths)-month goal reached")
-                .font(.system(size: 13, weight: .medium))
+                .font(.ff(size: 13, weight: .medium))
                 .foregroundStyle(Color.ffInk2)
             Spacer(minLength: 0)
         }
@@ -355,18 +383,18 @@ struct GoalView: View {
                         Spacer().frame(height: 44)
                         if let days = daysRemaining {
                             Text("\(days)")
-                                .font(.system(size: 48, weight: .regular, design: .serif))
+                                .font(.ff(size: 48, weight: .regular, design: .serif))
                                 .foregroundStyle(Color.ffInk)
                                 .contentTransition(.numericText())
                             Text(days == 1 ? "day left" : "days left")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.ff(size: 12, weight: .medium))
                                 .foregroundStyle(Color.ffInk3)
                         } else {
                             Text("Holding")
-                                .font(.system(size: 34, weight: .regular, design: .serif))
+                                .font(.ff(size: 34, weight: .regular, design: .serif))
                                 .foregroundStyle(Color.ffInk)
                             Text("steady")
-                                .font(.system(size: 12, weight: .medium))
+                                .font(.ff(size: 12, weight: .medium))
                                 .foregroundStyle(Color.ffInk3)
                         }
                     }
@@ -376,7 +404,7 @@ struct GoalView: View {
 
                 if let date = depletionDate {
                     Text("On track to run out around \(DateFormatter.goalDate.string(from: date))")
-                        .font(.system(size: 12))
+                        .font(.ff(size: 12))
                         .foregroundStyle(Color.ffInk3)
                         .multilineTextAlignment(.center)
                 }
@@ -397,10 +425,10 @@ struct GoalView: View {
                 if !expiringBeforeEmpty.isEmpty {
                     HStack(spacing: 10) {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 14))
+                            .font(.ff(size: 14))
                             .foregroundStyle(Color.ffTerra)
                         Text("\(expiringBeforeEmpty.count) brick\(expiringBeforeEmpty.count == 1 ? "" : "s") may expire before then — use oldest first.")
-                            .font(.system(size: 12))
+                            .font(.ff(size: 12))
                             .foregroundStyle(Color.ffInk2)
                         Spacer(minLength: 0)
                     }
@@ -418,15 +446,15 @@ struct GoalView: View {
             VStack(spacing: 18) {
                 FFEyebrow(text: "JOURNEY COMPLETE")
                 Image(systemName: "heart.circle.fill")
-                    .font(.system(size: 56))
+                    .font(.ff(size: 56))
                     .foregroundStyle(Color.ffSage)
 
                 VStack(spacing: 6) {
                     Text("Your journey, complete")
-                        .font(.system(size: 26, weight: .regular, design: .serif))
+                        .font(.ff(size: 26, weight: .regular, design: .serif))
                         .foregroundStyle(Color.ffInk)
                     Text("You nourished your baby every step of the way.")
-                        .font(.system(size: 14))
+                        .font(.ff(size: 14))
                         .foregroundStyle(Color.ffInk2)
                         .multilineTextAlignment(.center)
                 }
@@ -446,7 +474,7 @@ struct GoalView: View {
 
                 Button { openGoalSetup(initialMonths: s.goalMonths, switchToBuilding: true) } label: {
                     Text("Set a new goal")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.ff(size: 14, weight: .semibold))
                         .foregroundStyle(Color.ffTerra)
                         .padding(.horizontal, 18)
                         .padding(.vertical, 10)
@@ -473,11 +501,11 @@ struct GoalView: View {
                     VStack(spacing: 4) {
                         Spacer().frame(height: 44)
                         Text(String(format: "%.0f%%", progress * 100))
-                            .font(.system(size: 48, weight: .regular, design: .serif))
+                            .font(.ff(size: 48, weight: .regular, design: .serif))
                             .foregroundStyle(Color.ffInk)
                             .contentTransition(.numericText())
                         Text("of your goal")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.ff(size: 12, weight: .medium))
                             .foregroundStyle(Color.ffInk3)
                     }
                 }
@@ -488,36 +516,47 @@ struct GoalView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(UnitConversion.formatted(currentOz, in: s.preferredUnit))
-                            .font(.system(size: 15, weight: .semibold, design: .serif))
+                            .font(.ff(size: 15, weight: .semibold, design: .serif))
                             .foregroundStyle(Color.ffTerra)
                         Text("current")
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(.ff(size: 10, design: .monospaced))
                             .foregroundStyle(Color.ffInk3)
                     }
                     Spacer()
                     if let days = daysUntilGoal, days > 0 {
                         VStack(spacing: 2) {
-                            Text("\(days)d left")
-                                .font(.system(size: 15, weight: .semibold, design: .serif))
-                                .foregroundStyle(Color.ffInk2)
-                            if let date = estimatedDate {
-                                Text(DateFormatter.goalDate.string(from: date))
-                                    .font(.system(size: 10, design: .monospaced))
+                            // A precise multi-year ETA reads as discouraging
+                            // noise — past ~4 months, soften to a coarse pace.
+                            if days <= 120 {
+                                Text("\(days)d left")
+                                    .font(.ff(size: 15, weight: .semibold, design: .serif))
+                                    .foregroundStyle(Color.ffInk2)
+                                if let date = estimatedDate {
+                                    Text(DateFormatter.goalDate.string(from: date))
+                                        .font(.ff(size: 10, design: .monospaced))
+                                        .foregroundStyle(Color.ffInk3)
+                                }
+                            } else {
+                                Text("\((days + 29) / 30)+ months")
+                                    .font(.ff(size: 15, weight: .semibold, design: .serif))
+                                    .foregroundStyle(Color.ffInk2)
+                                Text("at this pace")
+                                    .font(.ff(size: 10, design: .monospaced))
                                     .foregroundStyle(Color.ffInk3)
                             }
                         }
                     } else if isGoalReached {
                         Text("Reached!")
-                            .font(.system(size: 15, weight: .semibold, design: .serif))
+                            .font(.ff(size: 15, weight: .semibold, design: .serif))
                             .foregroundStyle(Color.ffSage)
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(UnitConversion.formatted(targetOz, in: s.preferredUnit, decimals: 0))
-                            .font(.system(size: 15, weight: .semibold, design: .serif))
+                            .font(.ff(size: 15, weight: .semibold, design: .serif))
                             .foregroundStyle(Color.ffInk2)
                         Text("goal")
-                            .font(.system(size: 10, design: .monospaced))
+                            .font(.ff(size: 10, design: .monospaced))
                             .foregroundStyle(Color.ffInk3)
                     }
                 }
@@ -536,15 +575,15 @@ struct GoalView: View {
                     // Headline avg
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(UnitConversion.formatted(weeklyBuildRate, in: s.preferredUnit))
-                            .font(.system(size: 32, weight: .regular, design: .serif))
+                            .font(.ff(size: 32, weight: .regular, design: .serif))
                             .foregroundStyle(Color.ffInk)
                         Text("/week avg")
-                            .font(.system(size: 14))
+                            .font(.ff(size: 14))
                             .foregroundStyle(Color.ffInk3)
                         Spacer()
                         if weeklyBuildRate > 0 {
                             Image(systemName: "arrow.up")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.ff(size: 14, weight: .semibold))
                                 .foregroundStyle(Color.ffSage)
                         }
                     }
@@ -567,14 +606,16 @@ struct GoalView: View {
 
                         HStack {
                             Text("2 WKS AGO")
-                                .font(.system(size: 8, weight: .medium, design: .monospaced))
-                                .foregroundStyle(Color.ffInk3)
+                                .font(.ff(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Color.ffInk2)
                             Spacer()
                             Text("TODAY")
-                                .font(.system(size: 8, weight: .medium, design: .monospaced))
-                                .foregroundStyle(Color.ffInk3)
+                                .font(.ff(size: 10, weight: .medium, design: .monospaced))
+                                .foregroundStyle(Color.ffInk2)
                         }
                     }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Frozen \(UnitConversion.formatted(weeklyBuildRate, in: s.preferredUnit)) per week on average over the last 14 days")
                 }
             }
         }
@@ -601,7 +642,7 @@ struct GoalView: View {
                                                : Color.ffSurface2)
                                     .frame(width: 32, height: 32)
                                 Image(systemName: done ? "checkmark" : isCurrent ? "circle.fill" : "circle")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.ff(size: 13, weight: .semibold))
                                     .foregroundStyle(done ? Color.ffSage
                                                           : isCurrent ? Color.ffTerra
                                                           : Color.ffInk4)
@@ -610,13 +651,13 @@ struct GoalView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(spacing: 6) {
                                     Text(def.label)
-                                        .font(.system(size: 14, weight: done ? .regular : .semibold))
+                                        .font(.ff(size: 14, weight: done ? .regular : .semibold))
                                         .foregroundStyle(done ? Color.ffInk3 : Color.ffInk)
                                         .strikethrough(done, color: Color.ffInk2)
 
                                     if isCurrent {
                                         Text("NEXT")
-                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                            .font(.ff(size: 9, weight: .bold, design: .monospaced))
                                             .foregroundStyle(Color.ffTerra)
                                             .padding(.horizontal, 6)
                                             .padding(.vertical, 2)
@@ -625,7 +666,7 @@ struct GoalView: View {
                                     }
                                 }
                                 Text(UnitConversion.formatted(def.oz, in: s.preferredUnit, decimals: 0))
-                                    .font(.system(size: 11, design: .monospaced))
+                                    .font(.ff(size: 11, design: .monospaced))
                                     .foregroundStyle(Color.ffInk3)
                             }
 
@@ -634,7 +675,7 @@ struct GoalView: View {
                             if done {
                                 Image(systemName: "checkmark.circle.fill")
                                     .foregroundStyle(Color.ffSage)
-                                    .font(.system(size: 16))
+                                    .font(.ff(size: 16))
                             }
                         }
                         .padding(.horizontal, 18)
@@ -658,10 +699,10 @@ struct GoalView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     FFEyebrow(text: "YOUR GOAL")
                     Text("\(s.goalMonths) month\(s.goalMonths == 1 ? "" : "s") of supply")
-                        .font(.system(size: 18, weight: .regular, design: .serif))
+                        .font(.ff(size: 18, weight: .regular, design: .serif))
                         .foregroundStyle(Color.ffInk)
                     Text(UnitConversion.formatted(targetOz, in: s.preferredUnit, decimals: 0) + " target")
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.ff(size: 12, design: .monospaced))
                         .foregroundStyle(Color.ffInk3)
                 }
 
@@ -671,7 +712,7 @@ struct GoalView: View {
                     openGoalSetup(initialMonths: s.goalMonths, switchToBuilding: false)
                 } label: {
                     Text("Adjust")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.ff(size: 14, weight: .semibold))
                         .foregroundStyle(Color.ffTerra)
                         .padding(.horizontal, 18)
                         .padding(.vertical, 10)
@@ -748,10 +789,10 @@ struct GoalSetupSheet: View {
                 VStack(spacing: 32) {
                     VStack(spacing: 8) {
                         Image(systemName: "snowflake")
-                            .font(.system(size: 44, weight: .semibold))
+                            .font(.ff(size: 44, weight: .semibold))
                             .foregroundStyle(Color.ffTerra)
                         Text("Set Your Supply Goal")
-                            .font(.system(size: 26, weight: .regular, design: .serif))
+                            .font(.ff(size: 26, weight: .regular, design: .serif))
                             .foregroundStyle(Color.ffInk)
                         Text("How many months of frozen supply do you want to build?")
                             .font(.subheadline)
@@ -762,7 +803,7 @@ struct GoalSetupSheet: View {
 
                     VStack(spacing: 16) {
                         Text("\(selectedMonths) month\(selectedMonths == 1 ? "" : "s")")
-                            .font(.system(size: 56, weight: .regular, design: .serif))
+                            .font(.ff(size: 56, weight: .regular, design: .serif))
                             .foregroundStyle(Color.ffTerra)
                             .contentTransition(.numericText())
 
@@ -788,7 +829,7 @@ struct GoalSetupSheet: View {
                                     .font(.caption)
                                     .foregroundStyle(Color.ffInk3)
                                 Text(String(format: "%.0f oz  /  %.0f mL", targetOz, targetOz * UnitConversion.mLPerOz))
-                                    .font(.system(size: 18, weight: .regular, design: .serif))
+                                    .font(.ff(size: 18, weight: .regular, design: .serif))
                                     .foregroundStyle(Color.ffTerra)
                             }
                             Spacer()
@@ -797,7 +838,7 @@ struct GoalSetupSheet: View {
                                     .font(.caption)
                                     .foregroundStyle(Color.ffInk3)
                                 Text("\(selectedMonths) × 30 × \(String(format: "%.0f", dailyOz))")
-                                    .font(.system(size: 13, design: .monospaced))
+                                    .font(.ff(size: 13, design: .monospaced))
                                     .foregroundStyle(Color.ffInk2)
                             }
                         }
@@ -848,11 +889,11 @@ struct GoalStatCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 18, weight: .semibold))
+                .font(.ff(size: 18, weight: .semibold))
                 .foregroundStyle(iconColor)
             VStack(alignment: .leading, spacing: 2) {
                 Text(value)
-                    .font(.system(size: 14, weight: .regular, design: .serif))
+                    .font(.ff(size: 14, weight: .regular, design: .serif))
                     .foregroundStyle(Color.ffInk)
                     .minimumScaleFactor(0.6)
                     .lineLimit(1)
@@ -865,25 +906,6 @@ struct GoalStatCard: View {
         .padding(14)
         .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ffLine, lineWidth: 0.5))
-    }
-}
-
-struct BuildRateStat: View {
-    let value: String
-    let label: String
-
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(value)
-                .font(.system(size: 15, weight: .regular, design: .serif))
-                .foregroundStyle(Color.ffInk)
-                .minimumScaleFactor(0.6)
-                .lineLimit(1)
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(Color.ffInk3)
-        }
-        .frame(maxWidth: .infinity)
     }
 }
 

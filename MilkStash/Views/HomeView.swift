@@ -88,10 +88,10 @@ struct HomeView: View {
                     if totalOz > 0 && totalOz < appSettings.effectiveLowStashThresholdOz {
                         HStack(spacing: Space.s) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.ff(size: 14, weight: .semibold))
                                 .foregroundStyle(Color.ffButter)
                             Text("Stash is running low — \(UnitConversion.formatted(totalOz, in: unit)) remaining, below your \(UnitConversion.formatted(appSettings.effectiveLowStashThresholdOz, in: unit)) alert.")
-                                .font(.system(size: 14, weight: .regular))
+                                .font(.ff(size: 14, weight: .regular))
                                 .foregroundStyle(Color.ffInk2)
                         }
                         .padding(.horizontal, Space.l)
@@ -120,8 +120,14 @@ struct HomeView: View {
         .sheet(isPresented: $showAddBag)  { AddEditBagView(bag: nil) }
         .sheet(isPresented: $showUseMilk) { UseMilkView() }
         .sheet(isPresented: $showAlerts) {
-            AlertsSheet()
-                .presentationDetents([.medium, .large])
+            AlertsSheet(onUseMilk: {
+                showAlerts = false
+                // Give the alerts sheet a beat to tear down before presenting.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                    showUseMilk = true
+                }
+            })
+            .presentationDetents([.medium, .large])
         }
     }
 
@@ -136,14 +142,14 @@ struct HomeView: View {
                     showAlerts = true
                 } label: {
                     Image(systemName: hasAlerts ? "bell.badge.fill" : "bell")
-                        .font(.system(size: 16, weight: .regular))
+                        .font(.ff(size: 16, weight: .regular))
                         .foregroundStyle(hasAlerts ? Color.ffTerra : Color.ffInk3)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(hasAlerts ? "Alerts, action needed" : "Alerts")
             }
             Text("Hello, friend")
-                .font(.system(size: 34, weight: .regular, design: .serif))
+                .font(.ff(size: 34, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -180,16 +186,16 @@ struct HomeView: View {
                 // Label + snowflake
                 HStack(spacing: 6) {
                     Image(systemName: "snowflake")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.ff(size: 12, weight: .semibold))
                         .foregroundStyle(Color.ffTerra)
-                    Text("Your stash · \(String(format: "%.1f", days)) days")
-                        .font(.system(size: 13, weight: .medium))
+                    Text("Your stash · about \(Int(days.rounded())) day\(Int(days.rounded()) == 1 ? "" : "s")")
+                        .font(.ff(size: 13, weight: .medium))
                         .foregroundStyle(Color.ffInk2)
                 }
 
                 // Big serif oz number
                 Text(UnitConversion.formatted(totalOz, in: unit))
-                    .font(.system(size: 62, weight: .regular, design: .serif))
+                    .font(.ff(size: 62, weight: .regular, design: .serif))
                     .foregroundStyle(Color.ffInk)
                     .contentTransition(.numericText())
 
@@ -238,14 +244,16 @@ struct HomeView: View {
             }
             HStack {
                 Text("TODAY")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(.ff(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(Color.ffInk2)
                 Spacer()
                 Text("2 WEEKS")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(.ff(size: 10, weight: .medium, design: .monospaced))
                     .foregroundStyle(Color.ffInk2)
             }
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Roughly \(Int(days.rounded())) of the next 14 days covered at your current pace")
     }
 
     // MARK: - Quick Actions
@@ -256,8 +264,8 @@ struct HomeView: View {
             HStack(spacing: Space.m) {
                 quickActionButton(
                     icon: "plus.circle.fill",
-                    title: "Log a session",
-                    subtitle: "Add new Brick",
+                    title: "Add to stash",
+                    subtitle: "Log pumped milk",
                     style: .primary
                 ) { showAddBag = true }
                 .frame(width: buttonWidth)
@@ -265,7 +273,7 @@ struct HomeView: View {
                 quickActionButton(
                     icon: "drop.fill",
                     title: "Use milk",
-                    subtitle: "FIFO dispense",
+                    subtitle: "Oldest milk first",
                     style: .secondary
                 ) { showUseMilk = true }
                 .frame(width: buttonWidth)
@@ -287,14 +295,14 @@ struct HomeView: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.system(size: 20))
+                    .font(.ff(size: 20))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.ff(size: 15, weight: .semibold))
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     Text(subtitle)
-                        .font(.system(size: 11))
+                        .font(.ff(size: 11))
                         .opacity(0.8)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
@@ -333,8 +341,7 @@ struct HomeView: View {
                     Text("30d").tag(30)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 130)
-                .scaleEffect(0.9)
+                .frame(width: 150)
             }
 
             if expiring.isEmpty {
@@ -371,7 +378,7 @@ struct HomeView: View {
                     if let onShowHistory {
                         Button { onShowHistory() } label: {
                             Text("See all")
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.ff(size: 13, weight: .medium))
                                 .foregroundStyle(Color.ffTerra)
                         }
                         .buttonStyle(.plain)
@@ -408,7 +415,7 @@ struct FFStatPill: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(color)
             Text("\(value) \(label)")
-                .font(.system(size: 12, weight: .medium))
+                .font(.ff(size: 12, weight: .medium))
                 .foregroundStyle(Color.ffInk2)
         }
         .padding(.horizontal, 12)
@@ -438,13 +445,13 @@ struct FFExpiringRow: View {
             // Calendar block
             VStack(spacing: 0) {
                 Text(DateFormatter.calMonth.string(from: bag.freezeDate).uppercased())
-                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .font(.ff(size: 8, weight: .bold, design: .monospaced))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 2)
                     .background(urgencyColor)
                 Text(DateFormatter.calDay.string(from: bag.freezeDate))
-                    .font(.system(size: 18, weight: .bold, design: .serif))
+                    .font(.ff(size: 18, weight: .bold, design: .serif))
                     .foregroundStyle(urgencyColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 3)
@@ -457,11 +464,11 @@ struct FFExpiringRow: View {
                 let seq = StashService.sequenceLabel(for: bag, in: allBags)
                 if !seq.isEmpty {
                     Text(seq)
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .font(.ff(size: 10, weight: .medium, design: .monospaced))
                         .foregroundStyle(Color.ffInk3)
                 }
                 Text("\(bag.milkBagCount) bag\(bag.milkBagCount == 1 ? "" : "s") · \(UnitConversion.formatted(bag.volumePerBagOz, in: preferredUnit)) each")
-                    .font(.system(size: 13))
+                    .font(.ff(size: 13))
                     .foregroundStyle(Color.ffInk2)
             }
 
@@ -469,10 +476,10 @@ struct FFExpiringRow: View {
 
             VStack(alignment: .trailing, spacing: 3) {
                 Text(UnitConversion.formatted(bag.totalVolumeOz, in: preferredUnit))
-                    .font(.system(size: 16, weight: .regular, design: .serif))
+                    .font(.ff(size: 16, weight: .regular, design: .serif))
                     .foregroundStyle(Color.ffInk)
                 Text(daysLeft <= 0 ? "TODAY" : "\(daysLeft)d left")
-                    .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                    .font(.ff(size: 10, weight: .semibold, design: .monospaced))
                     .foregroundStyle(urgencyColor)
             }
         }
@@ -498,23 +505,23 @@ struct FFRecentUsedRow: View {
                     .fill(Color.ffSageSoft)
                     .frame(width: IconTile.size, height: IconTile.size)
                 Image(systemName: "drop.fill")
-                    .font(.system(size: IconTile.iconPt, weight: .semibold))
+                    .font(.ff(size: IconTile.iconPt, weight: .semibold))
                     .foregroundStyle(Color.ffSage)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(UnitConversion.formatted(event.totalVolumeOz, in: preferredUnit))
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.ff(size: 15, weight: .medium))
                     .foregroundStyle(Color.ffInk)
                 Text("\(event.totalBags) bag\(event.totalBags == 1 ? "" : "s")")
-                    .font(.system(size: 12))
+                    .font(.ff(size: 12))
                     .foregroundStyle(Color.ffInk3)
             }
 
             Spacer()
 
             Text(Self.relativeFormatter.localizedString(for: event.timestamp, relativeTo: Date()))
-                .font(.system(size: 13))
+                .font(.ff(size: 13))
                 .foregroundStyle(Color.ffInk3)
         }
         .padding(.horizontal, Space.l)

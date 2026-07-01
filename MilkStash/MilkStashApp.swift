@@ -43,6 +43,9 @@ struct MilkStashApp: App {
                 }
             }
             .preferredColorScheme(colorScheme)
+            // Fonts scale with Dynamic Type (Font.ff); cap the extremes so
+            // fixed-frame layouts (arcs, tiles, tab bar) stay usable.
+            .dynamicTypeSize(.xSmall ... .accessibility2)
         }
         .modelContainer(container)
     }

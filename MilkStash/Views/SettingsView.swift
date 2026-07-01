@@ -2,9 +2,16 @@
 
 import SwiftUI
 import SwiftData
+import CoreTransferable
+import UniformTypeIdentifiers
 
 struct SettingsView: View {
+    /// Jumps to the Journey tab, where the goal is actually edited.
+    var onEditGoal: (() -> Void)? = nil
+
     @Query private var settings: [AppSettings]
+    @Query private var allBags: [MilkBag]
+    @Query(sort: \UsageEvent.timestamp, order: .reverse) private var events: [UsageEvent]
     @Environment(\.modelContext) private var context
 
     private var appSettings: AppSettings { settings.first ?? AppSettings() }
@@ -79,7 +86,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 6) {
             FFEyebrow(text: "MAKE IT YOURS")
             Text("Settings")
-                .font(.system(size: 34, weight: .regular, design: .serif))
+                .font(.ff(size: 34, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -139,7 +146,7 @@ struct SettingsView: View {
                     } label: {
                         HStack {
                             Text("\(months) months")
-                                .font(.system(size: 15))
+                                .font(.ff(size: 15))
                                 .foregroundStyle(Color.ffInk)
                             Spacer()
                             ZStack {
@@ -179,14 +186,12 @@ struct SettingsView: View {
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                         .focused($focusDailyOz)
-                        .font(.system(size: 17, weight: .semibold, design: .serif))
+                        .font(.ff(size: 17, weight: .semibold, design: .serif))
                         .foregroundStyle(Color.ffTerra)
                         .monospacedDigit()
                         .fixedSize()
-                        .onChange(of: dailyOzText) {
-                            if let val = Double(dailyOzText), val > 0 {
-                                mutateSettings { $0.setDailyGoalFromDisplayValue(val) }
-                            }
+                        .onChange(of: focusDailyOz) { _, focused in
+                            if !focused { commitDailyGoal() }
                         }
                 }
 
@@ -199,14 +204,12 @@ struct SettingsView: View {
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                         .focused($focusThreshold)
-                        .font(.system(size: 17, weight: .semibold, design: .serif))
+                        .font(.ff(size: 17, weight: .semibold, design: .serif))
                         .foregroundStyle(Color.ffTerra)
                         .monospacedDigit()
                         .fixedSize()
-                        .onChange(of: thresholdText) {
-                            if let val = Double(thresholdText), val > 0 {
-                                mutateSettings { $0.setLowStashThresholdFromDisplayValue(val) }
-                            }
+                        .onChange(of: focusThreshold) { _, focused in
+                            if !focused { commitThreshold() }
                         }
                 }
 
@@ -215,10 +218,23 @@ struct SettingsView: View {
                     label: "Goal duration",
                     unit: "months"
                 ) {
-                    Text("\(appSettings.goalMonths)")
-                        .font(.system(size: 17, weight: .semibold, design: .serif))
-                        .foregroundStyle(Color.ffTerra)
-                        .monospacedDigit()
+                    Button {
+                        onEditGoal?()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text("\(appSettings.goalMonths)")
+                                .font(.ff(size: 17, weight: .semibold, design: .serif))
+                                .foregroundStyle(Color.ffTerra)
+                                .monospacedDigit()
+                            Image(systemName: "chevron.right")
+                                .font(.ff(size: 12, weight: .semibold))
+                                .foregroundStyle(Color.ffInk3)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(onEditGoal == nil)
+                    .accessibilityHint("Opens the Journey tab to change your goal")
                 }
             }
         }
@@ -234,15 +250,15 @@ struct SettingsView: View {
         HStack(spacing: 8) {
             HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.ff(size: 14))
                     .foregroundStyle(Color.ffInk3)
                     .frame(width: 20)
                 HStack(spacing: 6) {
                     Text(label)
-                        .font(.system(size: 15))
+                        .font(.ff(size: 15))
                         .foregroundStyle(Color.ffInk)
                     Text("(\(unit))")
-                        .font(.system(size: 12, design: .monospaced))
+                        .font(.ff(size: 12, design: .monospaced))
                         .foregroundStyle(Color.ffInk3)
                 }
             }
@@ -274,17 +290,45 @@ struct SettingsView: View {
                 settingsLabel(icon: "arrow.left.arrow.right", label: "Unit conversion")
             } value: {
                 Text("1 oz = 29.57 mL")
-                    .font(.system(size: 12, design: .monospaced))
+                    .font(.ff(size: 12, design: .monospaced))
                     .foregroundStyle(Color.ffInk3)
                     .multilineTextAlignment(.trailing)
             }
 
 
+            ShareLink(item: CSVExport(text: stashCSV()),
+                      preview: SharePreview("FreezeFlow stash export")) {
+                HStack {
+                    settingsLabel(icon: "square.and.arrow.up", label: "Export stash (CSV)")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.ff(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.ffInk3)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 8)
+
+            ShareLink(item: CSVExport(text: historyCSV()),
+                      preview: SharePreview("FreezeFlow history export")) {
+                HStack {
+                    settingsLabel(icon: "square.and.arrow.up", label: "Export history (CSV)")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.ff(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.ffInk3)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 8)
+
             settingsRow {
                 settingsLabel(icon: "info.circle", label: "App version")
             } value: {
                 Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
-                    .font(.system(size: 14, design: .monospaced))
+                    .font(.ff(size: 14, design: .monospaced))
                     .foregroundStyle(Color.ffInk3)
                     .multilineTextAlignment(.trailing)
             }
@@ -295,10 +339,70 @@ struct SettingsView: View {
 
     private var footerText: some View {
         Text("FreezeFlow v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") · Made with care")
-            .font(.system(size: 12))
+            .font(.ff(size: 12))
             .foregroundStyle(Color.ffInk4)
             .frame(maxWidth: .infinity)
             .padding(.top, 8)
+    }
+
+    // MARK: - Commit edits (on focus loss, not per keystroke)
+
+    private func commitDailyGoal() {
+        if let val = NumberParsing.double(from: dailyOzText), val > 0 {
+            let updated = mutateSettings { $0.setDailyGoalFromDisplayValue(val) }
+            refreshEditableText(using: updated)
+        } else {
+            refreshEditableText(using: appSettings)
+        }
+    }
+
+    private func commitThreshold() {
+        if let val = NumberParsing.double(from: thresholdText), val > 0 {
+            let updated = mutateSettings { $0.setLowStashThresholdFromDisplayValue(val) }
+            refreshEditableText(using: updated)
+        } else {
+            refreshEditableText(using: appSettings)
+        }
+    }
+
+    // MARK: - CSV export
+
+    private func csvField(_ s: String) -> String {
+        "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+    }
+
+    private func stashCSV() -> String {
+        var rows = ["Freeze Date,Expiration,Status,Milk Bags,Oz per Bag,Total Oz,Location,Bin,Label,Notes"]
+        for bag in allBags.sorted(by: { $0.freezeDate < $1.freezeDate }) {
+            rows.append([
+                DateFormatter.csvDay.string(from: bag.freezeDate),
+                DateFormatter.csvDay.string(from: bag.expirationDate),
+                bag.status.rawValue,
+                "\(bag.milkBagCount)",
+                String(format: "%.2f", bag.volumePerBagOz),
+                String(format: "%.2f", bag.totalVolumeOz),
+                csvField(bag.location),
+                csvField(bag.slotBin),
+                csvField(bag.labelCode),
+                csvField(bag.notes),
+            ].joined(separator: ","))
+        }
+        return rows.joined(separator: "\n")
+    }
+
+    private func historyCSV() -> String {
+        var rows = ["Date,Time,Kind,Bags,Total Oz,Notes"]
+        for e in events {
+            rows.append([
+                DateFormatter.csvDay.string(from: e.timestamp),
+                DateFormatter.historyTime.string(from: e.timestamp),
+                e.kind.rawValue,
+                "\(e.totalBags)",
+                String(format: "%.2f", e.totalVolumeOz),
+                csvField(e.notes),
+            ].joined(separator: ","))
+        }
+        return rows.joined(separator: "\n")
     }
 
     // MARK: - Helpers
@@ -330,14 +434,34 @@ struct SettingsView: View {
     private func settingsLabel(icon: String, label: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                .font(.ff(size: 14))
                 .foregroundStyle(Color.ffInk3)
                 .frame(width: 20)
             Text(label)
-                .font(.system(size: 15))
+                .font(.ff(size: 15))
                 .foregroundStyle(Color.ffInk)
         }
     }
+}
+
+/// Lazily-rendered CSV payload for ShareLink.
+struct CSVExport: Transferable {
+    let text: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        DataRepresentation(exportedContentType: .commaSeparatedText) { export in
+            Data(export.text.utf8)
+        }
+        .suggestedFileName("FreezeFlow-export.csv")
+    }
+}
+
+extension DateFormatter {
+    static let csvDay: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 }
 
 #Preview {

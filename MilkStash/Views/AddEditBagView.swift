@@ -46,6 +46,8 @@ struct AddEditBagView: View {
                     if isEditing {
                         statusSection
                         deleteButton
+                    } else {
+                        saveAndAddAnotherButton
                     }
                 }
                 .padding(.horizontal, 18)
@@ -91,19 +93,20 @@ struct AddEditBagView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Button("Cancel") { dismiss() }
-                    .font(.system(size: 16))
+                    .font(.ff(size: 16))
                     .foregroundStyle(Color.ffInk2)
                 Spacer()
                 Button(isEditing ? "Save" : "Add") { save() }
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.ff(size: 16, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 7)
-                    .background(Color.ffTerra, in: Capsule())
+                    .background(Color.ffTerra.opacity(vm.isValid ? 1 : 0.45), in: Capsule())
+                    .disabled(!vm.isValid)
             }
 
             Text(isEditing ? "Edit Brick" : "New Brick")
-                .font(.system(size: 32, weight: .regular, design: .serif))
+                .font(.ff(size: 32, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -144,11 +147,11 @@ struct AddEditBagView: View {
                             .keyboardType(.decimalPad)
                             .focused($focusedField, equals: .volumePerBag)
                             .multilineTextAlignment(.trailing)
-                            .font(.system(size: 16, weight: .semibold, design: .serif))
+                            .font(.ff(size: 16, weight: .semibold, design: .serif))
                             .foregroundStyle(Color.ffTerra)
                             .frame(width: 60)
                         Text(vm.unit.rawValue)
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(.ff(size: 12, design: .monospaced))
                             .foregroundStyle(Color.ffInk3)
                             .frame(width: 30, alignment: .leading)
                     }
@@ -170,12 +173,13 @@ struct AddEditBagView: View {
                                 .foregroundStyle(Color.ffTerra)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Remove a bag")
 
                         TextField("1", text: $vm.milkBagCountText)
                             .keyboardType(.numberPad)
                             .focused($focusedField, equals: .count)
                             .multilineTextAlignment(.center)
-                            .font(.system(size: 16, weight: .bold, design: .serif))
+                            .font(.ff(size: 16, weight: .bold, design: .serif))
                             .foregroundStyle(Color.ffInk)
                             .frame(width: 36)
 
@@ -189,17 +193,18 @@ struct AddEditBagView: View {
                                 .foregroundStyle(Color.ffTerra)
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("Add a bag")
                     }
                 }
 
                 if vm.computedTotalOz > 0 {
                     HStack {
                         Text("Total in Brick")
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.ff(size: 13, weight: .medium))
                             .foregroundStyle(Color.ffInk2)
                         Spacer()
                         Text(UnitConversion.formatted(vm.computedTotalOz, in: vm.unit))
-                            .font(.system(size: 17, weight: .semibold, design: .serif))
+                            .font(.ff(size: 17, weight: .semibold, design: .serif))
                             .foregroundStyle(Color.ffTerra)
                     }
                     .padding(.horizontal, 12)
@@ -228,10 +233,10 @@ struct AddEditBagView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: "bolt.fill")
-                    .font(.system(size: 11))
+                    .font(.ff(size: 11))
                     .foregroundStyle(Color.ffInk3)
                 Text("QUICK")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(.ff(size: 10, weight: .medium, design: .monospaced))
                     .tracking(1.5)
                     .foregroundStyle(Color.ffInk3)
             }
@@ -244,7 +249,7 @@ struct AddEditBagView: View {
                         } label: {
                             let isSelected = vm.volumePerBagText == String(format: "%.0f", preset)
                             Text("\(Int(preset)) \(vm.unit.rawValue)")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.ff(size: 13, weight: .semibold))
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 7)
                                 .background(isSelected ? Color.ffTerra : Color.ffSurface2, in: Capsule())
@@ -280,7 +285,7 @@ struct AddEditBagView: View {
                     rowLabel(icon: "hourglass", label: "Expires")
                     Spacer()
                     Text(DateFormatter.freeze.string(from: vm.useCustomExpiration ? vm.expirationDate : computedExpiration))
-                        .font(.system(size: 14, design: .monospaced))
+                        .font(.ff(size: 14, design: .monospaced))
                         .foregroundStyle(Color.ffInk3)
                 }
                 .padding(.vertical, 10)
@@ -297,15 +302,15 @@ struct AddEditBagView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "slider.horizontal.3")
-                        .font(.system(size: 13))
+                        .font(.ff(size: 13))
                         .foregroundStyle(Color.ffInk3)
                     Text("MORE DETAILS")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .font(.ff(size: 11, weight: .medium, design: .monospaced))
                         .tracking(1.2)
                         .foregroundStyle(Color.ffInk2)
                     Spacer()
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.ff(size: 12, weight: .semibold))
                         .foregroundStyle(Color.ffInk3)
                         .rotationEffect(.degrees(showMore ? 180 : 0))
                 }
@@ -388,13 +393,13 @@ struct AddEditBagView: View {
     ) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                .font(.ff(size: 14))
                 .foregroundStyle(Color.ffInk3)
                 .frame(width: 20)
 
             TextField(placeholder, text: text)
                 .focused($focusedField, equals: field)
-                .font(.system(size: 15))
+                .font(.ff(size: 15))
                 .foregroundStyle(Color.ffInk)
                 .tint(Color.ffTerra)
 
@@ -409,9 +414,11 @@ struct AddEditBagView: View {
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.ffTerra)
-                        .padding(6)
-                        .background(Color.ffTerraSoft, in: RoundedRectangle(cornerRadius: 6))
+                        .padding(9)
+                        .background(Color.ffTerraSoft, in: RoundedRectangle(cornerRadius: 8))
+                        .contentShape(Rectangle())
                 }
+                .accessibilityLabel("Choose from previous entries")
             }
         }
         .padding(.vertical, 12)
@@ -424,12 +431,12 @@ struct AddEditBagView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
                     Image(systemName: "tag")
-                        .font(.system(size: 14))
+                        .font(.ff(size: 14))
                         .foregroundStyle(Color.ffInk3)
                         .frame(width: 20)
                     TextField("Label code", text: $vm.labelCode)
                         .focused($focusedField, equals: .label)
-                        .font(.system(size: 15))
+                        .font(.ff(size: 15))
                         .foregroundStyle(Color.ffInk)
                         .tint(Color.ffTerra)
                 }
@@ -439,14 +446,14 @@ struct AddEditBagView: View {
 
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "text.alignleft")
-                        .font(.system(size: 14))
+                        .font(.ff(size: 14))
                         .foregroundStyle(Color.ffInk3)
                         .frame(width: 20)
                         .padding(.top, 4)
                     TextField("Notes", text: $vm.notes, axis: .vertical)
                         .lineLimit(3...6)
                         .focused($focusedField, equals: .notes)
-                        .font(.system(size: 15))
+                        .font(.ff(size: 15))
                         .foregroundStyle(Color.ffInk)
                         .tint(Color.ffTerra)
                 }
@@ -480,7 +487,7 @@ struct AddEditBagView: View {
                 Image(systemName: "trash")
                 Text("Delete Brick")
             }
-            .font(.system(size: 15, weight: .semibold))
+            .font(.ff(size: 15, weight: .semibold))
             .foregroundStyle(Color.milkDanger)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 14)
@@ -517,11 +524,11 @@ struct AddEditBagView: View {
     private func rowLabel(icon: String, label: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                .font(.ff(size: 14))
                 .foregroundStyle(Color.ffInk3)
                 .frame(width: 20)
             Text(label)
-                .font(.system(size: 15))
+                .font(.ff(size: 15))
                 .foregroundStyle(Color.ffInk)
         }
     }
@@ -547,7 +554,7 @@ struct AddEditBagView: View {
         }
     }
 
-    private func save() {
+    private func save(addAnother: Bool = false) {
         guard vm.validate() else {
             Haptics.warning()
             return
@@ -557,17 +564,46 @@ struct AddEditBagView: View {
         let bags = vm.milkBagCount
         if vm.save(bag: bag, context: context, settings: appSettings) {
             Haptics.success()
+            Announce.post("\(isEditing ? "Saved" : "Added to stash"): \(UnitConversion.formatted(totalOz, in: vm.unit)), \(bags) milk bag\(bags == 1 ? "" : "s")")
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                 savedSummary = (totalOz, bags)
             }
             // Hold the card briefly (also lets the success haptic play on device)
             // before dismissing the sheet.
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                dismiss()
+                if addAnother {
+                    withAnimation(.easeOut(duration: 0.2)) { savedSummary = nil }
+                    vm.resetForNextBrick()
+                    focusedField = .volumePerBag
+                } else {
+                    dismiss()
+                }
             }
         } else {
             Haptics.warning()
         }
+    }
+
+    /// Batch entry: saves this Brick and keeps the sheet open with the
+    /// date/location/unit intact for the next one.
+    private var saveAndAddAnotherButton: some View {
+        Button {
+            save(addAnother: true)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "plus.square.on.square")
+                Text("Save & add another")
+            }
+            .font(.ff(size: 15, weight: .semibold))
+            .foregroundStyle(Color.ffTerra)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(Color.ffTerraSoft, in: RoundedRectangle(cornerRadius: Radius.l))
+        }
+        .buttonStyle(.plain)
+        .disabled(!vm.isValid)
+        .opacity(vm.isValid ? 1 : 0.5)
+        .padding(.top, 4)
     }
 
     private func savedOverlay(oz: Double, bags: Int) -> some View {
@@ -575,16 +611,16 @@ struct AddEditBagView: View {
             Color.black.opacity(0.18).ignoresSafeArea()
             VStack(spacing: 14) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 48))
+                    .font(.ff(size: 48))
                     .foregroundStyle(Color.ffSage)
                 Text(isEditing ? "Saved" : "Added to stash")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.ff(size: 15, weight: .medium))
                     .foregroundStyle(Color.ffInk2)
                 Text(UnitConversion.formatted(oz, in: vm.unit))
-                    .font(.system(size: 30, weight: .semibold, design: .serif))
+                    .font(.ff(size: 30, weight: .semibold, design: .serif))
                     .foregroundStyle(Color.ffInk)
                 Text("\(bags) milk bag\(bags == 1 ? "" : "s")")
-                    .font(.system(size: 13))
+                    .font(.ff(size: 13))
                     .foregroundStyle(Color.ffInk3)
             }
             .padding(.horizontal, 32)

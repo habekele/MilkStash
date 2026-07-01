@@ -50,7 +50,9 @@ final class InventoryViewModel {
                 $0.location.lowercased().contains(q) ||
                 $0.slotBin.lowercased().contains(q) ||
                 $0.labelCode.lowercased().contains(q) ||
-                $0.notes.lowercased().contains(q)
+                $0.notes.lowercased().contains(q) ||
+                // The search field promises date search ("Jan", "Jan 1", "2026")
+                DateFormatter.freeze.string(from: $0.freezeDate).lowercased().contains(q)
             }
         }
 
@@ -98,8 +100,14 @@ final class AddEditBagViewModel {
 
     var validationError: String? = nil
 
-    var volumePerBag: Double { Double(volumePerBagText) ?? 0 }
+    var volumePerBag: Double { NumberParsing.double(from: volumePerBagText) ?? 0 }
     var milkBagCount: Int    { Int(milkBagCountText) ?? 1 }
+
+    /// Mirrors `validate()` without setting the error — drives the Save
+    /// button's enabled state.
+    var isValid: Bool {
+        volumePerBag > 0 && (Int(milkBagCountText) ?? 0) >= 1
+    }
 
     var computedTotalOz: Double {
         let perBagOz = unit == .oz ? volumePerBag : volumePerBag / UnitConversion.mLPerOz
@@ -108,7 +116,7 @@ final class AddEditBagViewModel {
 
     func load(from bag: MilkBag, settings: AppSettings) {
         unit = bag.unit
-        volumePerBagText = String(format: "%.1f", bag.volumePerBagIn(bag.unit))
+        volumePerBagText = NumberParsing.editableString(from: bag.volumePerBagIn(bag.unit))
         milkBagCountText = "\(bag.milkBagCount)"
         freezeDate = bag.freezeDate
         useCustomExpiration = true
@@ -125,8 +133,18 @@ final class AddEditBagViewModel {
         expirationDate = StashService.expirationDate(from: freezeDate, months: settings.defaultExpirationMonths)
     }
 
+    /// After "Save & add another": clear the per-brick fields but keep the
+    /// batch context (unit, freeze date, location/bin, expiration choice).
+    func resetForNextBrick() {
+        volumePerBagText = ""
+        milkBagCountText = "1"
+        labelCode = ""
+        notes = ""
+        validationError = nil
+    }
+
     func validate() -> Bool {
-        guard let vol = Double(volumePerBagText), vol > 0 else {
+        guard let vol = NumberParsing.double(from: volumePerBagText), vol > 0 else {
             validationError = "Volume per bag must be greater than 0."
             return false
         }
@@ -252,11 +270,54 @@ final class UseMilkViewModel {
         updateRecommendation(bags: bags)
     }
 
-    func applyUse(context: ModelContext) {
-        try? StashService.applyUse(plan: recommendation, unit: unit, context: context)
+    /// Drop selections for bricks no longer shown in the picker (e.g. expired
+    /// ones after "Include expired" is toggled off) so the plan can't include
+    /// hidden bricks.
+    func pruneManualSelections(to eligible: [MilkBag], bags: [MilkBag]) {
+        let eligibleIDs = Set(eligible.map(\.id))
+        manualSelections = manualSelections.filter { eligibleIDs.contains($0.key) }
+        updateRecommendation(bags: bags)
+    }
+
+    /// The last applied use, kept so the success overlay can offer Undo.
+    /// Plan bags are always in-stash before an apply, so restoring is just
+    /// re-incrementing counts and flipping status back.
+    private var lastUse: (event: UsageEvent, restock: [(bag: MilkBag, bags: Int)])? = nil
+
+    func applyUse(context: ModelContext) -> Bool {
+        let plan = recommendation
+        do {
+            guard let event = try StashService.applyUse(plan: plan, unit: unit, context: context) else {
+                return false
+            }
+            lastUse = (event, plan.map { ($0.bag, $0.wholeMilkBags) })
+        } catch {
+            // applyUse decrements bags before saving; undo so the in-memory
+            // state matches what's actually on disk.
+            context.rollback()
+            return false
+        }
         bagCountText = ""
         manualSelections = [:]
         recommendation = []
+        return true
+    }
+
+    func undoLastUse(context: ModelContext) -> Bool {
+        guard let last = lastUse else { return false }
+        for (bag, count) in last.restock {
+            bag.milkBagCount += count
+            bag.status = .inStash
+        }
+        context.delete(last.event)
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            return false
+        }
+        lastUse = nil
+        return true
     }
 }
 

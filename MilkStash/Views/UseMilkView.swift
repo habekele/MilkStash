@@ -4,6 +4,10 @@ import SwiftUI
 import SwiftData
 
 struct UseMilkView: View {
+    /// Opens in manual mode with this Brick pre-selected (Inventory's
+    /// "Use from this Brick" action).
+    var preselectedBagID: UUID? = nil
+
     @Query(filter: #Predicate<MilkBag> { $0.statusRaw == "In Stash" })
     private var stashBags: [MilkBag]
 
@@ -19,6 +23,9 @@ struct UseMilkView: View {
 
     // Brief success confirmation shown after a use is logged, before dismiss.
     @State private var loggedSummary: (oz: Double, bags: Int)? = nil
+    @State private var showSaveError = false
+    // Pending auto-dismiss after a logged use; cancelled by Undo.
+    @State private var dismissWork: DispatchWorkItem? = nil
 
     private let bagPresets: [Int] = [1, 2, 3, 4, 6, 8]
 
@@ -58,6 +65,7 @@ struct UseMilkView: View {
             .background(Color.ffBg.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
             .navigationBarHidden(true)
+            .safeAreaInset(edge: .bottom) { confirmBar }
             .overlay {
                 if let summary = loggedSummary {
                     successOverlay(oz: summary.oz, bags: summary.bags)
@@ -72,12 +80,21 @@ struct UseMilkView: View {
             }
             .onChange(of: vm.bagCountText)   { vm.updateRecommendation(bags: stashBags) }
             .onChange(of: vm.mode)           { Haptics.light(); vm.updateRecommendation(bags: stashBags) }
-            .onChange(of: vm.includeExpired) { vm.updateRecommendation(bags: stashBags) }
+            .onChange(of: vm.includeExpired) { vm.pruneManualSelections(to: sortedStashBags, bags: stashBags) }
+            .alert("Couldn't log this use", isPresented: $showSaveError) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Your stash wasn't changed. Please try again.")
+            }
             .onChange(of: bagFieldFocused)   { vm.isBagFieldFocused = bagFieldFocused }
             .onAppear {
                 Haptics.prepare()
                 vm.unit = appSettings.preferredUnit
                 vm.includeExpired = appSettings.includeExpiredInFIFO
+                if let id = preselectedBagID {
+                    vm.mode = .manual
+                    vm.setManualBagCount(for: id, to: 1, in: stashBags)
+                }
             }
         }
     }
@@ -88,30 +105,52 @@ struct UseMilkView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Button("Cancel") { dismiss() }
-                    .font(.system(size: 16))
+                    .font(.ff(size: 16))
                     .foregroundStyle(Color.ffInk2)
                 Spacer()
-                if !vm.recommendation.isEmpty && vm.canFulfill {
-                    Button {
-                        confirmUse()
-                    } label: {
-                        Text("Confirm")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 7)
-                            .background(Color.ffTerra, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                }
             }
 
             Text("Use Milk")
-                .font(.system(size: 32, weight: .regular, design: .serif))
+                .font(.ff(size: 32, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 8)
+    }
+
+    // MARK: - Bottom confirm bar
+
+    private var confirmReady: Bool { !vm.recommendation.isEmpty && vm.canFulfill }
+
+    private var confirmHint: String {
+        switch vm.mode {
+        case .auto:
+            return vm.bagsNeeded == 0 ? "Enter how many bags" : "Not enough bags in stash"
+        case .manual:
+            return "Pick at least 1 bag"
+        }
+    }
+
+    private var confirmBar: some View {
+        Button {
+            confirmUse()
+        } label: {
+            Text(confirmReady
+                 ? "Confirm · \(UnitConversion.formatted(vm.totalCoveredOz, in: vm.unit)) · \(vm.totalSelectedBags) bag\(vm.totalSelectedBags == 1 ? "" : "s")"
+                 : confirmHint)
+                .font(.ff(size: 16, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 15)
+                .foregroundStyle(confirmReady ? .white : Color.ffInk3)
+                .background(confirmReady ? Color.ffTerra : Color.ffSurface2,
+                            in: RoundedRectangle(cornerRadius: Radius.l))
+        }
+        .buttonStyle(.plain)
+        .disabled(!confirmReady || loggedSummary != nil)
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
+        .background(Color.ffBg.opacity(0.94))
     }
 
     // MARK: - Confirm + success
@@ -120,13 +159,31 @@ struct UseMilkView: View {
         // Capture totals before applyUse clears the recommendation.
         let oz = vm.totalCoveredOz
         let bags = vm.totalSelectedBags
-        vm.applyUse(context: context)
+        guard vm.applyUse(context: context) else {
+            Haptics.warning()
+            showSaveError = true
+            return
+        }
         Haptics.success()
+        Announce.post("Logged \(UnitConversion.formatted(oz, in: vm.unit)), \(bags) milk bag\(bags == 1 ? "" : "s"). Undo available.")
         withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
             loggedSummary = (oz, bags)
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
-            dismiss()
+        // Hold the card long enough to offer Undo before dismissing.
+        let work = DispatchWorkItem { dismiss() }
+        dismissWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4, execute: work)
+    }
+
+    private func undoUse() {
+        dismissWork?.cancel()
+        dismissWork = nil
+        if vm.undoLastUse(context: context) {
+            Haptics.light()
+            Announce.post("Undone. Milk returned to stash.")
+        }
+        withAnimation(.easeOut(duration: 0.2)) {
+            loggedSummary = nil
         }
     }
 
@@ -135,17 +192,27 @@ struct UseMilkView: View {
             Color.black.opacity(0.18).ignoresSafeArea()
             VStack(spacing: 14) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 48))
+                    .font(.ff(size: 48))
                     .foregroundStyle(Color.ffSage)
                 Text("Logged")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.ff(size: 15, weight: .medium))
                     .foregroundStyle(Color.ffInk2)
                 Text(UnitConversion.formatted(oz, in: vm.unit))
-                    .font(.system(size: 30, weight: .semibold, design: .serif))
+                    .font(.ff(size: 30, weight: .semibold, design: .serif))
                     .foregroundStyle(Color.ffInk)
                 Text("\(bags) milk bag\(bags == 1 ? "" : "s")")
-                    .font(.system(size: 13))
+                    .font(.ff(size: 13))
                     .foregroundStyle(Color.ffInk3)
+                Button { undoUse() } label: {
+                    Text("Undo")
+                        .font(.ff(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.ffTerra)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 9)
+                        .background(Color.ffTerraSoft, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
             }
             .padding(.horizontal, 32)
             .padding(.vertical, 28)
@@ -179,13 +246,13 @@ struct UseMilkView: View {
                         TextField("0", text: $vm.bagCountText)
                             .keyboardType(.numberPad)
                             .focused($bagFieldFocused)
-                            .font(.system(size: 44, weight: .regular, design: .serif))
+                            .font(.ff(size: 44, weight: .regular, design: .serif))
                             .foregroundStyle(Color.ffInk)
                             .monospacedDigit()
                             .frame(maxWidth: .infinity, alignment: .leading)
 
                         Text(vm.bagsNeeded == 1 ? "milk bag" : "milk bags")
-                            .font(.system(size: 13, design: .monospaced))
+                            .font(.ff(size: 13, design: .monospaced))
                             .foregroundStyle(Color.ffInk3)
                     }
 
@@ -197,14 +264,14 @@ struct UseMilkView: View {
                     let totalMilkBags = stashBags.map(\.milkBagCount).reduce(0, +)
                     HStack(spacing: 6) {
                         Image(systemName: "tray.full")
-                            .font(.system(size: 12))
+                            .font(.ff(size: 12))
                             .foregroundStyle(Color.ffInk3)
                         Text("Available: \(totalMilkBags) bag\(totalMilkBags == 1 ? "" : "s")")
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(.ff(size: 12, design: .monospaced))
                             .foregroundStyle(Color.ffInk2)
                         Text("·").foregroundStyle(Color.ffInk3)
                         Text(UnitConversion.formatted(totalOz, in: vm.unit))
-                            .font(.system(size: 12, design: .monospaced))
+                            .font(.ff(size: 12, design: .monospaced))
                             .foregroundStyle(Color.ffInk2)
                     }
                     .padding(.top, 2)
@@ -217,10 +284,10 @@ struct UseMilkView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: "bolt.fill")
-                    .font(.system(size: 11))
+                    .font(.ff(size: 11))
                     .foregroundStyle(Color.ffInk3)
                 Text("QUICK")
-                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .font(.ff(size: 10, weight: .medium, design: .monospaced))
                     .tracking(1.5)
                     .foregroundStyle(Color.ffInk3)
             }
@@ -233,7 +300,7 @@ struct UseMilkView: View {
                         } label: {
                             let isSelected = vm.bagCountText == "\(preset)"
                             Text("\(preset)")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.ff(size: 13, weight: .semibold))
                                 .frame(minWidth: 28)
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 7)
@@ -261,7 +328,7 @@ struct UseMilkView: View {
                         vm.resetManualSelections(in: stashBags)
                     } label: {
                         Text("Clear")
-                            .font(.system(size: 12, weight: .medium))
+                            .font(.ff(size: 12, weight: .medium))
                             .foregroundStyle(Color.ffTerra)
                     }
                     .buttonStyle(.plain)
@@ -272,10 +339,10 @@ struct UseMilkView: View {
                 FFCard(padding: 24) {
                     VStack(spacing: 10) {
                         Image(systemName: "tray")
-                            .font(.system(size: 32))
+                            .font(.ff(size: 32))
                             .foregroundStyle(Color.ffInk4)
                         Text("No Bricks available")
-                            .font(.system(size: 15))
+                            .font(.ff(size: 15))
                             .foregroundStyle(Color.ffInk2)
                     }
                     .frame(maxWidth: .infinity)
@@ -313,11 +380,11 @@ struct UseMilkView: View {
                 Toggle(isOn: $vm.includeExpired) {
                     HStack(spacing: 10) {
                         Image(systemName: "exclamationmark.triangle")
-                            .font(.system(size: 14))
+                            .font(.ff(size: 14))
                             .foregroundStyle(Color.ffInk3)
                             .frame(width: 20)
                         Text("Include expired bags")
-                            .font(.system(size: 15))
+                            .font(.ff(size: 15))
                             .foregroundStyle(Color.ffInk)
                     }
                 }
@@ -343,21 +410,21 @@ struct UseMilkView: View {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Bags")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .font(.ff(size: 11, weight: .medium, design: .monospaced))
                                 .tracking(1.2)
                                 .foregroundStyle(Color.ffInk3)
                             Text("\(vm.totalSelectedBags)")
-                                .font(.system(size: 22, weight: .regular, design: .serif))
+                                .font(.ff(size: 22, weight: .regular, design: .serif))
                                 .foregroundStyle(Color.ffInk)
                         }
                         Spacer()
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("Total")
-                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .font(.ff(size: 11, weight: .medium, design: .monospaced))
                                 .tracking(1.2)
                                 .foregroundStyle(Color.ffInk3)
                             Text(UnitConversion.formatted(vm.totalCoveredOz, in: vm.unit))
-                                .font(.system(size: 22, weight: .regular, design: .serif))
+                                .font(.ff(size: 22, weight: .regular, design: .serif))
                                 .foregroundStyle(Color.ffInk)
                         }
                     }
@@ -367,11 +434,12 @@ struct UseMilkView: View {
                     if vm.mode == .auto && !vm.canFulfill {
                         HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 12))
+                                .font(.ff(size: 12))
+                                .foregroundStyle(Color.ffButter)
                             Text("Not enough bags in stash to cover this amount.")
-                                .font(.system(size: 12))
+                                .font(.ff(size: 12))
+                                .foregroundStyle(Color.ffInk2)
                         }
-                        .foregroundStyle(Color.ffButter)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -397,14 +465,14 @@ struct UseMilkView: View {
             FFCard(padding: 24) {
                 VStack(spacing: 10) {
                     Image(systemName: "tray")
-                        .font(.system(size: 32))
+                        .font(.ff(size: 32))
                         .foregroundStyle(Color.ffInk4)
                     Text("No eligible Bricks found")
-                        .font(.system(size: 15))
+                        .font(.ff(size: 15))
                         .foregroundStyle(Color.ffInk2)
                     if !vm.includeExpired {
                         Text("Try turning on Include expired bags")
-                            .font(.system(size: 12))
+                            .font(.ff(size: 12))
                             .foregroundStyle(Color.ffInk3)
                     }
                 }
@@ -432,13 +500,13 @@ struct ManualBagPickerRow: View {
             let calColor = bag.isExpiringSoon(within: 14) ? Color.ffButter : Color.ffTerra
             VStack(spacing: 0) {
                 Text(DateFormatter.calMonth.string(from: bag.freezeDate).uppercased())
-                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                    .font(.ff(size: 7, weight: .bold, design: .monospaced))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 2)
                     .background(calColor)
                 Text(DateFormatter.calDay.string(from: bag.freezeDate))
-                    .font(.system(size: 16, weight: .bold, design: .serif))
+                    .font(.ff(size: 16, weight: .bold, design: .serif))
                     .foregroundStyle(calColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 2)
@@ -450,16 +518,16 @@ struct ManualBagPickerRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(DateFormatter.freeze.string(from: bag.freezeDate))
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.ff(size: 14, weight: .semibold))
                         .foregroundStyle(Color.ffInk)
                     if !seq.isEmpty {
                         Text(seq)
-                            .font(.system(size: 11))
+                            .font(.ff(size: 11))
                             .foregroundStyle(Color.ffInk3)
                     }
                 }
                 Text("\(bag.milkBagCount) × \(UnitConversion.formatted(bag.volumePerBagOz, in: displayUnit)) available")
-                    .font(.system(size: 12))
+                    .font(.ff(size: 12))
                     .foregroundStyle(Color.ffInk2)
                 if bag.isExpired {
                     TagBadge("Expired", color: .milkDanger)
@@ -479,9 +547,10 @@ struct ManualBagPickerRow: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(selected == 0)
+                .accessibilityLabel("Remove a bag")
 
                 Text("\(selected)")
-                    .font(.system(size: 16, weight: .bold, design: .serif))
+                    .font(.ff(size: 16, weight: .bold, design: .serif))
                     .foregroundStyle(isPicked ? Color.ffTerra : Color.ffInk3)
                     .frame(minWidth: 22)
 
@@ -495,6 +564,7 @@ struct ManualBagPickerRow: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(selected >= bag.milkBagCount)
+                .accessibilityLabel("Add a bag")
             }
         }
         .padding(.horizontal, Space.l)
@@ -520,18 +590,18 @@ struct FIFOItemRow: View {
                     .fill(Color.ffTerraSoft)
                     .frame(width: IconTile.size, height: IconTile.size)
                 Text("\(stepNumber)")
-                    .font(.system(size: 14, weight: .bold, design: .serif))
+                    .font(.ff(size: 14, weight: .bold, design: .serif))
                     .foregroundStyle(Color.ffTerra)
             }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(DateFormatter.freeze.string(from: item.bag.freezeDate))
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.ff(size: 14, weight: .semibold))
                         .foregroundStyle(Color.ffInk)
                     if !seq.isEmpty {
                         Text(seq)
-                            .font(.system(size: 11))
+                            .font(.ff(size: 11))
                             .foregroundStyle(Color.ffInk3)
                     }
                     if item.bag.isExpired { TagBadge("Expired", color: .milkDanger) }
@@ -539,15 +609,15 @@ struct FIFOItemRow: View {
 
                 if !item.bag.location.isEmpty {
                     Text(item.bag.location + (item.bag.slotBin.isEmpty ? "" : " · \(item.bag.slotBin)"))
-                        .font(.system(size: 12))
+                        .font(.ff(size: 12))
                         .foregroundStyle(Color.ffInk2)
                 }
 
                 HStack(spacing: 4) {
                     Image(systemName: "shippingbox.fill")
-                        .font(.system(size: 9))
+                        .font(.ff(size: 9))
                     Text("\(item.wholeMilkBags) milk bag\(item.wholeMilkBags == 1 ? "" : "s")")
-                        .font(.system(size: 11, weight: .semibold))
+                        .font(.ff(size: 11, weight: .semibold))
                 }
                 .foregroundStyle(Color.ffTerra)
                 .padding(.horizontal, 8)
@@ -559,11 +629,11 @@ struct FIFOItemRow: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text(UnitConversion.formatted(item.takeOz, in: displayUnit))
-                    .font(.system(size: 16, weight: .regular, design: .serif))
+                    .font(.ff(size: 16, weight: .regular, design: .serif))
                     .foregroundStyle(item.isWholeZiplock ? Color.milkDanger : Color.ffInk)
                     .monospacedDigit()
                 Text(item.isWholeZiplock ? "All bags" : "Some bags")
-                    .font(.system(size: 10, design: .monospaced))
+                    .font(.ff(size: 10, design: .monospaced))
                     .foregroundStyle(Color.ffInk3)
             }
         }

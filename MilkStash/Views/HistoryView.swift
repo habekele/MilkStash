@@ -8,8 +8,15 @@ struct HistoryView: View {
     @Query private var settings: [AppSettings]
     private var appSettings: AppSettings { settings.first ?? AppSettings() }
 
+    @State private var kindFilter: UsageKind? = nil
+
+    private var filteredEvents: [UsageEvent] {
+        guard let kind = kindFilter else { return events }
+        return events.filter { $0.kind == kind }
+    }
+
     private var grouped: [(day: Date, events: [UsageEvent])] {
-        StashService.groupedByDay(events)
+        StashService.groupedByDay(filteredEvents)
     }
 
     var body: some View {
@@ -17,8 +24,9 @@ struct HistoryView: View {
             ScrollView {
                 LazyVStack(spacing: Space.l) {
                     headerSection
+                    if !events.isEmpty { filterChips }
 
-                    if events.isEmpty {
+                    if filteredEvents.isEmpty {
                         emptyState
                     } else {
                         ForEach(grouped, id: \.day) { group in
@@ -46,7 +54,7 @@ struct HistoryView: View {
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("History")
-                .font(.system(size: 34, weight: .regular, design: .serif))
+                .font(.ff(size: 34, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
             FFEyebrow(text: summaryEyebrow)
         }
@@ -61,15 +69,24 @@ struct HistoryView: View {
         return "\(entries) · \(UnitConversion.formatted(usedOz, in: unit)) USED"
     }
 
+    private var filterChips: some View {
+        HStack(spacing: 8) {
+            FFFilterChip(label: "All", isActive: kindFilter == nil) { kindFilter = nil }
+            FFFilterChip(label: "Used", isActive: kindFilter == .used) { kindFilter = .used }
+            FFFilterChip(label: "Discarded", isActive: kindFilter == .discarded) { kindFilter = .discarded }
+            Spacer()
+        }
+    }
+
     // MARK: - Empty State
 
     private var emptyState: some View {
         VStack(spacing: 16) {
             Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 56))
+                .font(.ff(size: 56))
                 .foregroundStyle(Color.ffTerra.opacity(0.5))
             Text("No history yet")
-                .font(.system(size: 20, weight: .regular, design: .serif))
+                .font(.ff(size: 20, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
             Text("When you use or discard milk, it'll show up here.")
                 .font(.subheadline)
@@ -108,9 +125,9 @@ private struct UsageEventCard: View {
                 HStack(spacing: Space.s) {
                     HStack(spacing: 5) {
                         Image(systemName: isUsed ? "drop.fill" : "trash.fill")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.ff(size: 11, weight: .semibold))
                         Text(event.kind.rawValue)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.ff(size: 12, weight: .semibold))
                     }
                     .foregroundStyle(accent)
                     .padding(.horizontal, 10)
@@ -121,17 +138,17 @@ private struct UsageEventCard: View {
                     Spacer()
 
                     Text(DateFormatter.historyTime.string(from: event.timestamp))
-                        .font(.system(size: 13, weight: .regular))
+                        .font(.ff(size: 13, weight: .regular))
                         .foregroundStyle(Color.ffInk3)
                 }
 
                 // Totals
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(UnitConversion.formatted(event.totalVolumeOz, in: unit))
-                        .font(.system(size: 22, weight: .semibold, design: .rounded))
+                        .font(.ff(size: 22, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.ffInk)
                     Text("· \(event.totalBags) bag\(event.totalBags == 1 ? "" : "s")")
-                        .font(.system(size: 14, weight: .regular))
+                        .font(.ff(size: 14, weight: .regular))
                         .foregroundStyle(Color.ffInk2)
                 }
 
@@ -143,15 +160,15 @@ private struct UsageEventCard: View {
                             HStack(spacing: Space.s) {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(line.labelCode.isEmpty ? "Brick" : line.labelCode)
-                                        .font(.system(size: 14, weight: .medium))
+                                        .font(.ff(size: 14, weight: .medium))
                                         .foregroundStyle(Color.ffInk)
                                     Text("Frozen \(DateFormatter.freeze.string(from: line.freezeDate))")
-                                        .font(.system(size: 12))
+                                        .font(.ff(size: 12))
                                         .foregroundStyle(Color.ffInk3)
                                 }
                                 Spacer()
-                                Text("\(line.milkBags) · \(UnitConversion.formatted(line.volumeOz, in: unit))")
-                                    .font(.system(size: 13, weight: .regular))
+                                Text("\(line.milkBags) bag\(line.milkBags == 1 ? "" : "s") · \(UnitConversion.formatted(line.volumeOz, in: unit))")
+                                    .font(.ff(size: 13, weight: .regular))
                                     .foregroundStyle(Color.ffInk2)
                             }
                             .padding(.vertical, Space.s)

@@ -35,3 +35,11 @@ enum Haptics {
         impact.prepare()
     }
 }
+
+/// VoiceOver announcements for transient confirmations (success overlays
+/// auto-dismiss too fast for a screen-reader user to find them).
+enum Announce {
+    static func post(_ message: String) {
+        UIAccessibility.post(notification: .announcement, argument: message)
+    }
+}

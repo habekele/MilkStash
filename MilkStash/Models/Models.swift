@@ -198,6 +198,7 @@ final class AppSettings {
     var goalEverReached: Bool = false         // latched true the first time the goal is met; never auto-reset
     var journeyModeRaw: String = JourneyMode.building.rawValue
     var lastCelebratedGoalDate: Date? = nil   // the goalStartDate we last celebrated, so re-reaching the same goal doesn't re-fire
+    var drawdownNudgeDismissedForGoal: Date? = nil  // goalStartDate whose drawdown nudge was dismissed (persists across launches)
 
     init() {
         self.preferredUnitRaw = MilkUnit.oz.rawValue
@@ -211,6 +212,7 @@ final class AppSettings {
         self.goalEverReached = false
         self.journeyModeRaw = JourneyMode.building.rawValue
         self.lastCelebratedGoalDate = nil
+        self.drawdownNudgeDismissedForGoal = nil
     }
 
     var journeyMode: JourneyMode {
@@ -301,6 +303,34 @@ private enum LegacySettingsCompatibility {
 
     static func markCanonicalStorageEnabled() {
         UserDefaults.standard.set(true, forKey: canonicalStorageKey)
+    }
+}
+
+/// Locale-aware parsing/formatting for user-entered numbers. `Double(_:)` only
+/// accepts "." as the decimal separator, but `.decimalPad` shows "," in many
+/// locales — so raw `Double(text)` rejects valid input like "4,5".
+enum NumberParsing {
+    private static let formatter: NumberFormatter = {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.locale = .current
+        f.usesGroupingSeparator = false
+        f.maximumFractionDigits = 2
+        f.minimumFractionDigits = 0
+        return f
+    }()
+
+    static func double(from text: String) -> Double? {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        if let v = Double(trimmed) { return v }
+        return formatter.number(from: trimmed)?.doubleValue
+    }
+
+    /// Format for editable text fields: locale separator, up to 2 fraction
+    /// digits, no padding — so stored values round-trip through an edit
+    /// without silently losing precision.
+    static func editableString(from value: Double) -> String {
+        formatter.string(from: NSNumber(value: value)) ?? String(value)
     }
 }
 

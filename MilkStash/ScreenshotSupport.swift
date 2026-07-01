@@ -96,8 +96,6 @@ enum ScreenshotData {
 }
 
 struct ScreenshotHost: View {
-    @State private var selectedTab: Int = sceneInitialTab()
-
     var body: some View {
         let scene = ProcessInfo.processInfo.environment["SCENE"]
             ?? CommandLine.arguments.dropFirst().first(where: { !$0.hasPrefix("-") })
@@ -121,8 +119,6 @@ struct ScreenshotHost: View {
             ContentView(selectedTab: .constant(0))
         }
     }
-
-    private static func sceneInitialTab() -> Int { 0 }
 
     private func scenarioFromArgs() -> String? {
         let args = ProcessInfo.processInfo.arguments

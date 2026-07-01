@@ -18,6 +18,7 @@ struct InventoryView: View {
     @State private var showDeleteConfirm = false
     @State private var bagToDiscard: MilkBag? = nil
     @State private var showDiscardConfirm = false
+    @State private var bagToUse: MilkBag? = nil
     @State private var showFilters = false
     @State private var showOther = false
 
@@ -75,6 +76,7 @@ struct InventoryView: View {
             .navigationBarHidden(true)
             .sheet(isPresented: $showAddBag) { AddEditBagView(bag: nil) }
             .sheet(item: $editingBag) { bag in AddEditBagView(bag: bag) }
+            .sheet(item: $bagToUse) { bag in UseMilkView(preselectedBagID: bag.id) }
             .sheet(isPresented: $showFilters) {
                 FilterSortSheet(vm: vm, allBags: allBags)
                     .presentationDetents([.medium, .large])
@@ -108,7 +110,7 @@ struct InventoryView: View {
                     Image(systemName: vm.hasActiveFilters
                           ? "line.3.horizontal.decrease.circle.fill"
                           : "line.3.horizontal.decrease.circle")
-                        .font(.system(size: 20))
+                        .font(.ff(size: 20))
                         .foregroundStyle(vm.hasActiveFilters ? Color.ffTerra : Color.ffInk3)
                 }
                 .buttonStyle(.plain)
@@ -122,7 +124,7 @@ struct InventoryView: View {
                         if !showSearch { vm.searchText = "" }
                     } label: {
                         Image(systemName: "magnifyingglass")
-                            .font(.system(size: 18))
+                            .font(.ff(size: 18))
                             .foregroundStyle(showSearch ? Color.ffTerra : Color.ffInk3)
                     }
                     .buttonStyle(.plain)
@@ -130,7 +132,7 @@ struct InventoryView: View {
 
                     Button { showAddBag = true } label: {
                         Image(systemName: "plus")
-                            .font(.system(size: 20, weight: .semibold))
+                            .font(.ff(size: 20, weight: .semibold))
                             .foregroundStyle(Color.ffTerra)
                     }
                     .buttonStyle(.plain)
@@ -139,7 +141,7 @@ struct InventoryView: View {
             }
 
             Text("The Stash")
-                .font(.system(size: 34, weight: .regular, design: .serif))
+                .font(.ff(size: 34, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
 
             summaryStrip
@@ -178,12 +180,21 @@ struct InventoryView: View {
                             fg: Color.milkDanger, capFg: Color.milkDanger)
             } else {
                 let urgent = d <= 14
-                summaryTile(value: d == 0 ? "Today" : "\(d) day\(d == 1 ? "" : "s")",
-                            caption: "USE NEXT",
-                            bg: urgent ? Color.ffButterSoft : Color.ffSurface,
-                            border: urgent ? Color.ffButter.opacity(0.3) : Color.ffLine,
-                            fg: urgent ? Color.ffButter : Color.ffInk,
-                            capFg: urgent ? Color.ffButter : Color.ffInk3)
+                // Ink text on the butter tint (butter-on-butter fails contrast);
+                // urgency reads from the tinted background and border.
+                Button {
+                    vm.filterStatus = nil
+                    vm.filterExpiringSoon = true
+                } label: {
+                    summaryTile(value: d == 0 ? "Today" : "\(d) day\(d == 1 ? "" : "s")",
+                                caption: "USE NEXT",
+                                bg: urgent ? Color.ffButterSoft : Color.ffSurface,
+                                border: urgent ? Color.ffButter.opacity(0.3) : Color.ffLine,
+                                fg: Color.ffInk,
+                                capFg: urgent ? Color.ffInk2 : Color.ffInk3)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint("Filters to Bricks expiring soon")
             }
         } else {
             summaryTile(value: "—", caption: "USE NEXT",
@@ -197,12 +208,12 @@ struct InventoryView: View {
                              fg: Color, capFg: Color) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(value)
-                .font(.system(size: 18, weight: .regular, design: .serif))
+                .font(.ff(size: 18, weight: .regular, design: .serif))
                 .foregroundStyle(fg)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             Text(caption)
-                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .font(.ff(size: 9, weight: .medium, design: .monospaced))
                 .tracking(0.8)
                 .foregroundStyle(capFg)
                 .lineLimit(1)
@@ -220,10 +231,10 @@ struct InventoryView: View {
     private var searchBar: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 15))
+                .font(.ff(size: 15))
                 .foregroundStyle(Color.ffInk3)
             TextField("Search by date, bin, or note…", text: $vm.searchText)
-                .font(.system(size: 15))
+                .font(.ff(size: 15))
                 .foregroundStyle(Color.ffInk)
                 .tint(Color.ffTerra)
             if !vm.searchText.isEmpty {
@@ -274,7 +285,7 @@ struct InventoryView: View {
     private var sortRow: some View {
         HStack {
             Image(systemName: "arrow.up.arrow.down")
-                .font(.system(size: 13))
+                .font(.ff(size: 13))
                 .foregroundStyle(Color.ffInk3)
 
             Menu {
@@ -284,10 +295,10 @@ struct InventoryView: View {
             } label: {
                 HStack(spacing: 4) {
                     Text("Sorted by \(vm.sortOption.rawValue)")
-                        .font(.system(size: 13))
+                        .font(.ff(size: 13))
                         .foregroundStyle(Color.ffInk2)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 10))
+                        .font(.ff(size: 10))
                         .foregroundStyle(Color.ffInk3)
                 }
             }
@@ -296,7 +307,7 @@ struct InventoryView: View {
             Spacer()
 
             Text("\(filteredBags.count) shown")
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .font(.ff(size: 11, weight: .medium, design: .monospaced))
                 .foregroundStyle(Color.ffInk3)
         }
     }
@@ -361,7 +372,7 @@ struct InventoryView: View {
             Spacer()
             if let chevron {
                 Image(systemName: chevron)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.ff(size: 11, weight: .semibold))
                     .foregroundStyle(Color.ffInk3)
             }
         }
@@ -380,7 +391,15 @@ struct InventoryView: View {
                     FFInventoryRow(
                         bag: bag,
                         allBags: allBags,
-                        preferredUnit: appSettings.preferredUnit
+                        preferredUnit: appSettings.preferredUnit,
+                        onEdit: { editingBag = bag },
+                        onUse: bag.status == .inStash && bag.milkBagCount > 0
+                            ? { bagToUse = bag } : nil,
+                        onDiscard: bag.status == .inStash
+                            ? { bagToDiscard = bag; showDiscardConfirm = true } : nil,
+                        onRestore: bag.status != .inStash
+                            ? { restore(bag) } : nil,
+                        onDelete: { bagToDelete = bag; showDeleteConfirm = true }
                     )
                     .contentShape(Rectangle())
                     .onTapGesture { editingBag = bag }
@@ -390,14 +409,18 @@ struct InventoryView: View {
                         } label: { Label("Edit", systemImage: "pencil") }
 
                         if bag.status == .inStash {
+                            if bag.milkBagCount > 0 {
+                                Button {
+                                    bagToUse = bag
+                                } label: { Label("Use from this Brick", systemImage: "drop") }
+                            }
                             Button {
                                 bagToDiscard = bag
                                 showDiscardConfirm = true
                             } label: { Label("Discard", systemImage: "xmark.circle") }
                         } else {
                             Button {
-                                bag.status = .inStash
-                                do { try context.save() } catch { print("InventoryView: save failed:", error) }
+                                restore(bag)
                             } label: { Label("Restore", systemImage: "arrow.uturn.left") }
                         }
 
@@ -425,10 +448,10 @@ struct InventoryView: View {
     private var emptyState: some View {
         VStack(spacing: 16) {
             Image(systemName: "tray.fill")
-                .font(.system(size: 56))
+                .font(.ff(size: 56))
                 .foregroundStyle(Color.ffTerra.opacity(0.5))
             Text(vm.searchText.isEmpty ? "No Bricks yet" : "No matching Bricks")
-                .font(.system(size: 20, weight: .regular, design: .serif))
+                .font(.ff(size: 20, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
             Text(vm.searchText.isEmpty
                  ? "Tap + to add your first Brick"
@@ -445,14 +468,22 @@ struct InventoryView: View {
         context.delete(bag)
         do { try context.save(); Haptics.warning() } catch { print("InventoryView: save failed:", error) }
     }
+
+    private func restore(_ bag: MilkBag) {
+        bag.status = .inStash
+        do { try context.save() } catch { print("InventoryView: save failed:", error) }
+    }
 }
 
 // MARK: - InventoryViewModel extension for hasActiveFilters
 
 extension InventoryViewModel {
     var hasActiveFilters: Bool {
+        // nil status ("All") widens the view rather than filtering it, so it
+        // shouldn't light up the filter icon.
         !filterLocation.isEmpty || !filterBin.isEmpty
-            || filterStatus != .inStash || filterExpiringSoon || filterExpired
+            || (filterStatus != nil && filterStatus != .inStash)
+            || filterExpiringSoon || filterExpired
     }
 }
 
@@ -466,7 +497,7 @@ struct FFFilterChip: View {
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(.system(size: 13, weight: .medium))
+                .font(.ff(size: 13, weight: .medium))
                 .foregroundStyle(isActive ? Color.ffSurface : Color.ffInk2)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 7)
@@ -484,6 +515,14 @@ struct FFInventoryRow: View {
     let bag: MilkBag
     let allBags: [MilkBag]
     let preferredUnit: MilkUnit
+
+    // When provided, the trailing chevron becomes an ellipsis menu so row
+    // actions are discoverable without knowing about long-press.
+    var onEdit: (() -> Void)? = nil
+    var onUse: (() -> Void)? = nil
+    var onDiscard: (() -> Void)? = nil
+    var onRestore: (() -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
 
     private var seq: String { StashService.sequenceLabel(for: bag, in: allBags) }
 
@@ -506,13 +545,13 @@ struct FFInventoryRow: View {
             let calColor = bag.isExpiringSoon(within: 14) ? Color.ffButter : Color.ffTerra
             VStack(spacing: 0) {
                 Text(DateFormatter.calMonth.string(from: bag.freezeDate).uppercased())
-                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                    .font(.ff(size: 7, weight: .bold, design: .monospaced))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 2)
                     .background(calColor)
                 Text(DateFormatter.calDay.string(from: bag.freezeDate))
-                    .font(.system(size: 16, weight: .bold, design: .serif))
+                    .font(.ff(size: 16, weight: .bold, design: .serif))
                     .foregroundStyle(calColor)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 2)
@@ -525,11 +564,11 @@ struct FFInventoryRow: View {
                 // Brick label
                 HStack(spacing: 6) {
                     Text(DateFormatter.freeze.string(from: bag.freezeDate))
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.ff(size: 15, weight: .semibold))
                         .foregroundStyle(Color.ffInk)
                     if !seq.isEmpty {
                         Text(seq)
-                            .font(.system(size: 11, weight: .medium))
+                            .font(.ff(size: 11, weight: .medium))
                             .foregroundStyle(Color.ffInk3)
                     }
                 }
@@ -550,31 +589,47 @@ struct FFInventoryRow: View {
             // Single clean volume summary
             VStack(alignment: .trailing, spacing: 2) {
                 Text(UnitConversion.formatted(bag.totalVolumeOz, in: preferredUnit))
-                    .font(.system(size: 18, weight: .regular, design: .serif))
+                    .font(.ff(size: 18, weight: .regular, design: .serif))
                     .foregroundStyle(Color.ffInk)
                     .monospacedDigit()
                 Text("\(bag.milkBagCount) bag\(bag.milkBagCount == 1 ? "" : "s")")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.ff(size: 11, weight: .medium))
                     .foregroundStyle(Color.ffInk3)
             }
 
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(Color.ffInk3)
+            if onEdit != nil {
+                Menu {
+                    if let onEdit {
+                        Button { onEdit() } label: { Label("Edit", systemImage: "pencil") }
+                    }
+                    if let onUse {
+                        Button { onUse() } label: { Label("Use from this Brick", systemImage: "drop") }
+                    }
+                    if let onDiscard {
+                        Button { onDiscard() } label: { Label("Discard", systemImage: "xmark.circle") }
+                    }
+                    if let onRestore {
+                        Button { onRestore() } label: { Label("Restore", systemImage: "arrow.uturn.left") }
+                    }
+                    if let onDelete {
+                        Button(role: .destructive) { onDelete() } label: { Label("Delete", systemImage: "trash") }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .font(.ff(size: 17))
+                        .foregroundStyle(Color.ffInk3)
+                        .frame(width: 36, height: 36)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Brick actions")
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.ffInk3)
+            }
         }
         .padding(.horizontal, Space.l)
         .padding(.vertical, Space.m)
-    }
-}
-
-// Keep legacy BagRow for any references
-struct BagRow: View {
-    let bag: MilkBag
-    let allBags: [MilkBag]
-    let preferredUnit: MilkUnit
-
-    var body: some View {
-        FFInventoryRow(bag: bag, allBags: allBags, preferredUnit: preferredUnit)
     }
 }
 
@@ -634,7 +689,7 @@ struct FilterSortSheet: View {
                     dismiss()
                 } label: {
                     Text("Done")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.ff(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 7)
@@ -643,7 +698,7 @@ struct FilterSortSheet: View {
                 .buttonStyle(.plain)
             }
             Text("Filter & Sort")
-                .font(.system(size: 32, weight: .regular, design: .serif))
+                .font(.ff(size: 32, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -725,11 +780,11 @@ struct FilterSortSheet: View {
                 if locs.isEmpty {
                     HStack(spacing: 10) {
                         Image(systemName: "tray")
-                            .font(.system(size: 14))
+                            .font(.ff(size: 14))
                             .foregroundStyle(Color.ffInk3)
                             .frame(width: 20)
                         Text("No locations set")
-                            .font(.system(size: 14))
+                            .font(.ff(size: 14))
                             .foregroundStyle(Color.ffInk2)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -797,9 +852,9 @@ struct FilterSortSheet: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: "arrow.counterclockwise")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.ff(size: 13, weight: .semibold))
                 Text("Clear filters")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.ff(size: 14, weight: .semibold))
             }
             .foregroundStyle(Color.milkDanger)
             .frame(maxWidth: .infinity)
@@ -818,16 +873,16 @@ struct FilterSortSheet: View {
         Button(action: action) {
             HStack(spacing: 12) {
                 Image(systemName: icon)
-                    .font(.system(size: 14))
+                    .font(.ff(size: 14))
                     .foregroundStyle(isSelected ? Color.ffTerra : Color.ffInk3)
                     .frame(width: 20)
                 Text(label)
-                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                    .font(.ff(size: 15, weight: isSelected ? .semibold : .regular))
                     .foregroundStyle(Color.ffInk)
                 Spacer()
                 if isSelected {
                     Image(systemName: "checkmark")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.ff(size: 13, weight: .semibold))
                         .foregroundStyle(Color.ffTerra)
                 }
             }
@@ -841,11 +896,11 @@ struct FilterSortSheet: View {
     private func toggleLabel(icon: String, label: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14))
+                .font(.ff(size: 14))
                 .foregroundStyle(Color.ffInk3)
                 .frame(width: 20)
             Text(label)
-                .font(.system(size: 15))
+                .font(.ff(size: 15))
                 .foregroundStyle(Color.ffInk)
         }
     }

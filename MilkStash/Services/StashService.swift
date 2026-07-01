@@ -107,7 +107,9 @@ struct StashService {
         includeExpired: Bool
     ) -> [FIFOItem] {
         let eligible = bags
-            .filter { $0.status == .inStash }
+            // volumePerBagOz > 0 also guards the ceil division below — a
+            // partially-synced CloudKit record can arrive with the 0 default.
+            .filter { $0.status == .inStash && $0.milkBagCount > 0 && $0.volumePerBagOz > 0 }
             .filter { includeExpired || !$0.isExpired }
             .sorted {
                 if $0.freezeDate != $1.freezeDate { return $0.freezeDate < $1.freezeDate }
@@ -192,8 +194,10 @@ struct StashService {
 
     // MARK: - Apply Use
 
-    static func applyUse(plan: [FIFOItem], unit: MilkUnit, context: ModelContext) throws {
-        guard !plan.isEmpty else { return }
+    /// Returns the recorded event (nil for an empty plan) so callers can offer undo.
+    @discardableResult
+    static func applyUse(plan: [FIFOItem], unit: MilkUnit, context: ModelContext) throws -> UsageEvent? {
+        guard !plan.isEmpty else { return nil }
 
         // Record the session before mutating bags so the snapshot reflects what
         // was actually pulled.
@@ -223,6 +227,7 @@ struct StashService {
             }
         }
         try context.save()
+        return event
     }
 
     /// Mark a Ziplock as discarded and log a matching history event.

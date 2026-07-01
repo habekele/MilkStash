@@ -18,12 +18,24 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
+            // All five tabs stay mounted (opacity-toggled), so hidden ones must
+            // be explicitly removed from the accessibility tree or VoiceOver
+            // can walk into invisible screens.
             HomeView(onShowHistory: { selectedTab = 3 })
                 .opacity(selectedTab == 0 ? 1 : 0)
-            InventoryView().opacity(selectedTab == 1 ? 1 : 0)
-            GoalView()    .opacity(selectedTab == 2 ? 1 : 0)
-            HistoryView() .opacity(selectedTab == 3 ? 1 : 0)
-            SettingsView().opacity(selectedTab == 4 ? 1 : 0)
+                .accessibilityHidden(selectedTab != 0)
+            InventoryView()
+                .opacity(selectedTab == 1 ? 1 : 0)
+                .accessibilityHidden(selectedTab != 1)
+            GoalView(isActive: selectedTab == 2)
+                .opacity(selectedTab == 2 ? 1 : 0)
+                .accessibilityHidden(selectedTab != 2)
+            HistoryView()
+                .opacity(selectedTab == 3 ? 1 : 0)
+                .accessibilityHidden(selectedTab != 3)
+            SettingsView(onEditGoal: { selectedTab = 2 })
+                .opacity(selectedTab == 4 ? 1 : 0)
+                .accessibilityHidden(selectedTab != 4)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             FFTabBar(selectedTab: $selectedTab)
@@ -35,6 +47,16 @@ struct ContentView: View {
                 let s = AppSettings()
                 context.insert(s)
                 try? context.save()
+            } else if settings.count > 1 {
+                // CloudKit first-launch on two devices can each seed a row.
+                // Keep the oldest goal (deterministic on every device) so all
+                // `settings.first` reads agree.
+                if let keep = settings.min(by: { $0.goalStartDate < $1.goalStartDate }) {
+                    for extra in settings where extra !== keep {
+                        context.delete(extra)
+                    }
+                    try? context.save()
+                }
             }
         }
     }
@@ -145,7 +167,7 @@ struct FFTabBar: View {
                     }
                 } label: {
                     Image(systemName: selected ? items[idx].selectedIcon : items[idx].icon)
-                        .font(.system(size: 21, weight: selected ? .semibold : .regular))
+                        .font(.ff(size: 21, weight: selected ? .semibold : .regular))
                         .foregroundStyle(selected ? Color.ffTerra : Color.ffInk4)
                         .frame(width: 46, height: 46)
                         .background(
@@ -174,6 +196,18 @@ struct FFTabBar: View {
         .offset(y: tabBar.hidden ? 130 : 0)
         .opacity(tabBar.hidden ? 0 : 1)
         .animation(.spring(response: 0.38, dampingFraction: 0.86), value: tabBar.hidden)
+    }
+}
+
+// MARK: - Design System: Typography
+
+extension Font {
+    /// Dynamic-Type-scaling replacement for `.system(size:weight:design:)`.
+    /// A fixed `.system(size:)` font ignores the user's text-size setting;
+    /// this scales the base size with the body style's metrics instead.
+    static func ff(size: CGFloat, weight: Font.Weight = .regular, design: Font.Design = .default) -> Font {
+        let scaled = UIFontMetrics(forTextStyle: .body).scaledValue(for: size)
+        return .system(size: scaled, weight: weight, design: design)
     }
 }
 
@@ -360,10 +394,10 @@ struct FFEncouragement: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.ff(size: 14, weight: .semibold))
                 .foregroundStyle(Color.ffSage)
             Text(message)
-                .font(.system(size: 14, weight: .regular))
+                .font(.ff(size: 14, weight: .regular))
                 .italic()
                 .foregroundStyle(Color.ffInk2)
         }
@@ -390,7 +424,7 @@ struct FFEyebrow: View {
     let text: String
     var body: some View {
         Text(text)
-            .font(.system(size: 11, weight: .medium))
+            .font(.ff(size: 11, weight: .medium))
             .tracking(2)
             .foregroundStyle(Color.ffInk3)
     }
