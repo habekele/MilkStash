@@ -14,13 +14,13 @@ struct InventoryView: View {
     @State private var showSearch = false
     @State private var showAddBag = false
     @State private var editingBag: MilkBag? = nil
-    @State private var bagToDelete: MilkBag? = nil
-    @State private var showDeleteConfirm = false
-    @State private var bagToDiscard: MilkBag? = nil
-    @State private var showDiscardConfirm = false
     @State private var bagToUse: MilkBag? = nil
     @State private var showFilters = false
     @State private var showOther = false
+
+    // Immediate discard/delete with a brief Undo window (no confirm dialogs).
+    @State private var undoToast: (message: String, undo: () -> Void)? = nil
+    @State private var toastWork: DispatchWorkItem? = nil
 
     private var filteredBags: [MilkBag] { vm.filtered(allBags) }
     private var stashBags: [MilkBag] { allBags.filter { $0.status == .inStash } }
@@ -54,23 +54,36 @@ struct InventoryView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: Space.l) {
+            List {
+                Group {
                     headerSection
                     if showSearch { searchBar }
                     filterChipsRow
                     sortRow
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 4, leading: Space.screenPad, bottom: 4, trailing: Space.screenPad))
 
-                    if filteredBags.isEmpty {
-                        emptyState
-                    } else {
-                        groupedContent
+                if filteredBags.isEmpty {
+                    emptyState
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                } else {
+                    if !useSoonBags.isEmpty {
+                        brickSection(title: "USE SOON", accent: Color.ffButter, bags: useSoonBags)
+                    }
+                    if !plentyBags.isEmpty {
+                        brickSection(title: "PLENTY OF TIME", accent: Color.ffSage, bags: plentyBags)
+                    }
+                    if !otherBags.isEmpty {
+                        otherSection
                     }
                 }
-                .padding(.horizontal, Space.screenPad)
-                .padding(.top, Space.s)
-                .padding(.bottom, Space.tabBarClearance)
             }
+            .listStyle(.insetGrouped)
+            .listSectionSpacing(Space.l)
+            .scrollContentBackground(.hidden)
             .background(Color.ffBg.ignoresSafeArea())
             .tracksTabBar()
             .navigationBarHidden(true)
@@ -81,24 +94,52 @@ struct InventoryView: View {
                 FilterSortSheet(vm: vm, allBags: allBags)
                     .presentationDetents([.medium, .large])
             }
-            .alert("Delete Brick?", isPresented: $showDeleteConfirm, presenting: bagToDelete) { bag in
-                Button("Delete", role: .destructive) { delete(bag) }
-                Button("Cancel", role: .cancel) {}
-            } message: { bag in
-                Text("This will permanently remove the Brick frozen on \(DateFormatter.freeze.string(from: bag.freezeDate)).")
-            }
-            .alert("Discard Brick?", isPresented: $showDiscardConfirm, presenting: bagToDiscard) { bag in
-                Button("Discard", role: .destructive) {
-                    do {
-                        try StashService.discard(bag: bag, unit: appSettings.preferredUnit, context: context)
-                        Haptics.warning()
-                    } catch { print("InventoryView: discard failed:", error) }
+            .overlay(alignment: .bottom) {
+                if let toast = undoToast {
+                    undoToastView(toast)
                 }
-                Button("Cancel", role: .cancel) {}
-            } message: { bag in
-                Text("Mark the Brick frozen on \(DateFormatter.freeze.string(from: bag.freezeDate)) as discarded?")
             }
         }
+    }
+
+    // MARK: - Undo toast
+
+    private func undoToastView(_ toast: (message: String, undo: () -> Void)) -> some View {
+        HStack(spacing: 14) {
+            Text(toast.message)
+                .font(.ff(size: 14, weight: .medium))
+                .foregroundStyle(Color.ffSurface)
+            Button {
+                toastWork?.cancel()
+                toast.undo()
+                Haptics.light()
+                withAnimation(.easeOut(duration: 0.2)) { undoToast = nil }
+            } label: {
+                Text("Undo")
+                    .font(.ff(size: 14, weight: .bold))
+                    .foregroundStyle(Color.ffTerraSoft)
+            }
+            .buttonStyle(.ffPressable)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .background(Color.ffInk, in: Capsule())
+        .shadow(color: .black.opacity(0.18), radius: 12, x: 0, y: 4)
+        .padding(.bottom, 74)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    private func showUndoToast(_ message: String, undo: @escaping () -> Void) {
+        toastWork?.cancel()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            undoToast = (message, undo)
+        }
+        Announce.post("\(message). Undo available.")
+        let work = DispatchWorkItem {
+            withAnimation(.easeOut(duration: 0.2)) { undoToast = nil }
+        }
+        toastWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0, execute: work)
     }
 
     // MARK: - Header
@@ -312,54 +353,35 @@ struct InventoryView: View {
         }
     }
 
-    // MARK: - Grouped Content
+    // MARK: - Grouped Content (List sections, so rows get native swipe actions)
 
-    private var groupedContent: some View {
-        VStack(spacing: 16) {
-            if !useSoonBags.isEmpty {
-                inventoryGroup(
-                    title: "USE SOON",
-                    accent: Color.ffButter,
-                    bags: useSoonBags
-                )
+    private func brickSection(title: String, accent: Color, bags: [MilkBag]) -> some View {
+        Section {
+            ForEach(bags, id: \.id) { bag in
+                brickRow(bag)
             }
-            if !plentyBags.isEmpty {
-                inventoryGroup(
-                    title: "PLENTY OF TIME",
-                    accent: Color.ffSage,
-                    bags: plentyBags
-                )
-            }
-            if !otherBags.isEmpty {
-                inventoryGroup(
-                    title: "OTHER",
-                    accent: Color.ffInk3,
-                    bags: otherBags,
-                    collapsible: true
-                )
-            }
+        } header: {
+            groupHeader(title: title, accent: accent, count: bags.count, chevron: nil)
+                .textCase(nil)
         }
     }
 
-    private func inventoryGroup(title: String, accent: Color, bags: [MilkBag],
-                                collapsible: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if collapsible {
-                Button {
-                    withAnimation(.easeInOut(duration: 0.2)) { showOther.toggle() }
-                } label: {
-                    groupHeader(title: title, accent: accent, count: bags.count,
-                                chevron: showOther ? "chevron.up" : "chevron.down")
+    private var otherSection: some View {
+        Section {
+            if showOther {
+                ForEach(otherBags, id: \.id) { bag in
+                    brickRow(bag)
                 }
-                .buttonStyle(.plain)
-
-                if showOther {
-                    groupCard(accent: accent, bags: bags)
-                }
-            } else {
-                groupHeader(title: title, accent: accent, count: bags.count, chevron: nil)
-                groupCard(accent: accent, bags: bags)
             }
+        } header: {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) { showOther.toggle() }
+            } label: {
+                groupHeader(title: "OTHER", accent: Color.ffInk3, count: otherBags.count,
+                            chevron: showOther ? "chevron.up" : "chevron.down")
+            }
+            .buttonStyle(.plain)
+            .textCase(nil)
         }
     }
 
@@ -379,68 +401,74 @@ struct InventoryView: View {
         .contentShape(Rectangle())
     }
 
-    private func groupCard(accent: Color, bags: [MilkBag]) -> some View {
-        HStack(spacing: 0) {
-            // Urgency color rail
-            Rectangle()
-                .fill(accent)
-                .frame(width: 3)
-
-            VStack(spacing: 0) {
-                ForEach(Array(bags.enumerated()), id: \.element.id) { idx, bag in
-                    FFInventoryRow(
-                        bag: bag,
-                        allBags: allBags,
-                        preferredUnit: appSettings.preferredUnit,
-                        onEdit: { editingBag = bag },
-                        onUse: bag.status == .inStash && bag.milkBagCount > 0
-                            ? { bagToUse = bag } : nil,
-                        onDiscard: bag.status == .inStash
-                            ? { bagToDiscard = bag; showDiscardConfirm = true } : nil,
-                        onRestore: bag.status != .inStash
-                            ? { restore(bag) } : nil,
-                        onDelete: { bagToDelete = bag; showDeleteConfirm = true }
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture { editingBag = bag }
-                    .contextMenu {
-                        Button {
-                            editingBag = bag
-                        } label: { Label("Edit", systemImage: "pencil") }
-
-                        if bag.status == .inStash {
-                            if bag.milkBagCount > 0 {
-                                Button {
-                                    bagToUse = bag
-                                } label: { Label("Use from this Brick", systemImage: "drop") }
-                            }
-                            Button {
-                                bagToDiscard = bag
-                                showDiscardConfirm = true
-                            } label: { Label("Discard", systemImage: "xmark.circle") }
-                        } else {
-                            Button {
-                                restore(bag)
-                            } label: { Label("Restore", systemImage: "arrow.uturn.left") }
-                        }
-
-                        Button(role: .destructive) {
-                            bagToDelete = bag
-                            showDeleteConfirm = true
-                        } label: { Label("Delete", systemImage: "trash") }
-                    }
-
-                    if idx < bags.count - 1 {
-                        FFDivider().padding(.leading, 16)
-                    }
-                }
+    private func brickRow(_ bag: MilkBag) -> some View {
+        FFInventoryRow(
+            bag: bag,
+            allBags: allBags,
+            preferredUnit: appSettings.preferredUnit,
+            onEdit: { editingBag = bag },
+            onUse: bag.status == .inStash && bag.milkBagCount > 0
+                ? { bagToUse = bag } : nil,
+            onDiscard: bag.status == .inStash
+                ? { performDiscard(bag) } : nil,
+            onRestore: bag.status != .inStash
+                ? { restore(bag) } : nil,
+            onDelete: { performDelete(bag) }
+        )
+        .contentShape(Rectangle())
+        .onTapGesture { editingBag = bag }
+        .listRowBackground(Color.ffSurface)
+        .listRowSeparatorTint(Color.ffLine)
+        .listRowInsets(EdgeInsets())
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            if bag.status == .inStash && bag.milkBagCount > 0 {
+                Button {
+                    bagToUse = bag
+                } label: { Label("Use", systemImage: "drop.fill") }
+                .tint(Color.ffTerra)
             }
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity)
-            .background(Color.ffSurface)
         }
-        .clipShape(RoundedRectangle(cornerRadius: Radius.xl))
-        .overlay(RoundedRectangle(cornerRadius: Radius.xl).stroke(Color.ffLine, lineWidth: 0.5))
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                performDelete(bag)
+            } label: { Label("Delete", systemImage: "trash") }
+
+            if bag.status == .inStash {
+                Button {
+                    performDiscard(bag)
+                } label: { Label("Discard", systemImage: "xmark.circle") }
+                .tint(Color.ffButter)
+            } else {
+                Button {
+                    restore(bag)
+                } label: { Label("Restore", systemImage: "arrow.uturn.left") }
+                .tint(Color.ffSage)
+            }
+        }
+        .contextMenu {
+            Button {
+                editingBag = bag
+            } label: { Label("Edit", systemImage: "pencil") }
+
+            if bag.status == .inStash {
+                if bag.milkBagCount > 0 {
+                    Button {
+                        bagToUse = bag
+                    } label: { Label("Use from this Brick", systemImage: "drop") }
+                }
+                Button {
+                    performDiscard(bag)
+                } label: { Label("Discard", systemImage: "xmark.circle") }
+            } else {
+                Button {
+                    restore(bag)
+                } label: { Label("Restore", systemImage: "arrow.uturn.left") }
+            }
+
+            Button(role: .destructive) {
+                performDelete(bag)
+            } label: { Label("Delete", systemImage: "trash") }
+        }
     }
 
     // MARK: - Empty State
@@ -464,9 +492,52 @@ struct InventoryView: View {
         .padding(.top, 60)
     }
 
-    private func delete(_ bag: MilkBag) {
+    // MARK: - Immediate actions with Undo
+
+    private func performDiscard(_ bag: MilkBag) {
+        do {
+            let event = try StashService.discard(bag: bag, unit: appSettings.preferredUnit, context: context)
+            Haptics.warning()
+            showUndoToast("Brick discarded") {
+                bag.status = .inStash
+                context.delete(event)
+                do { try context.save() } catch { print("InventoryView: undo discard failed:", error) }
+            }
+        } catch { print("InventoryView: discard failed:", error) }
+    }
+
+    private func performDelete(_ bag: MilkBag) {
+        // Snapshot everything so Undo can rebuild the row after the model is gone.
+        let snap = (id: bag.id, volOz: bag.volumePerBagOz, count: bag.milkBagCount,
+                    unitRaw: bag.displayUnit, freeze: bag.freezeDate, expire: bag.expirationDate,
+                    location: bag.location, bin: bag.slotBin, label: bag.labelCode,
+                    notes: bag.notes, statusRaw: bag.statusRaw)
         context.delete(bag)
-        do { try context.save(); Haptics.warning() } catch { print("InventoryView: save failed:", error) }
+        do {
+            try context.save()
+        } catch {
+            print("InventoryView: delete failed:", error)
+            return
+        }
+        Haptics.warning()
+        showUndoToast("Brick deleted") {
+            let restored = MilkBag(
+                volumePerBag: snap.volOz,
+                unit: .oz,
+                milkBagCount: snap.count,
+                freezeDate: snap.freeze,
+                expirationDate: snap.expire,
+                location: snap.location,
+                slotBin: snap.bin,
+                labelCode: snap.label,
+                notes: snap.notes,
+                status: BagStatus(rawValue: snap.statusRaw) ?? .inStash
+            )
+            restored.id = snap.id
+            restored.displayUnit = snap.unitRaw
+            context.insert(restored)
+            do { try context.save() } catch { print("InventoryView: undo delete failed:", error) }
+        }
     }
 
     private func restore(_ bag: MilkBag) {

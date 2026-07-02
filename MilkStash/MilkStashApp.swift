@@ -7,6 +7,7 @@ import SwiftData
 struct MilkStashApp: App {
     let container: ModelContainer
     let isScreenshotMode: Bool
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let schema = Schema([MilkBag.self, AppSettings.self, UsageEvent.self])
@@ -29,6 +30,10 @@ struct MilkStashApp: App {
             container = try! ModelContainer(for: schema, configurations:
                 ModelConfiguration(schema: schema, isStoredInMemoryOnly: true))
         }
+
+        if !screenshotMode {
+            NotificationRouter.shared.attach()
+        }
     }
 
     @AppStorage("appearanceMode") private var appearanceMode: String = "system"
@@ -48,6 +53,15 @@ struct MilkStashApp: App {
             .dynamicTypeSize(.xSmall ... .accessibility2)
         }
         .modelContainer(container)
+        .onChange(of: scenePhase) { _, phase in
+            // Backgrounding is the moment stash state stops changing — refresh
+            // everything the system shows while the app is closed.
+            guard phase == .background, !isScreenshotMode else { return }
+            let bags = (try? container.mainContext.fetch(FetchDescriptor<MilkBag>())) ?? []
+            let settings = (try? container.mainContext.fetch(FetchDescriptor<AppSettings>()))?.first
+            ExpiryNotifications.refresh(bags: bags)
+            StashWidgetBridge.publish(bags: bags, settings: settings)
+        }
     }
 
     private var colorScheme: ColorScheme? {

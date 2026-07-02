@@ -6,8 +6,37 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		FFA9000E2F60AA000000000E /* StashWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FFA900012F60AA0000000001 /* StashWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		FFA9000B2F60AA000000000B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 32B3DD9A2F52BB1D00811EF2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = FFA900042F60AA0000000004;
+			remoteInfo = StashWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		FFA9000D2F60AA000000000D /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				FFA9000E2F60AA000000000E /* StashWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		32B3DDA22F52BB1D00811EF2 /* MilkStash.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MilkStash.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FFA900012F60AA0000000001 /* StashWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = StashWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -17,6 +46,13 @@
 				Info.plist,
 			);
 			target = 32B3DDA12F52BB1D00811EF2 /* MilkStash */;
+		};
+		FFA900032F60AA0000000003 /* Exceptions for "StashWidget" folder in "StashWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = FFA900042F60AA0000000004 /* StashWidgetExtension */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -29,10 +65,25 @@
 			path = MilkStash;
 			sourceTree = "<group>";
 		};
+		FFA900022F60AA0000000002 /* StashWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				FFA900032F60AA0000000003 /* Exceptions for "StashWidget" folder in "StashWidgetExtension" target */,
+			);
+			path = StashWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		32B3DD9F2F52BB1D00811EF2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FFA900062F60AA0000000006 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -46,6 +97,7 @@
 			isa = PBXGroup;
 			children = (
 				32B3DDA42F52BB1D00811EF2 /* MilkStash */,
+				FFA900022F60AA0000000002 /* StashWidget */,
 				32B3DDA32F52BB1D00811EF2 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -54,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				32B3DDA22F52BB1D00811EF2 /* MilkStash.app */,
+				FFA900012F60AA0000000001 /* StashWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -68,10 +121,12 @@
 				32B3DD9E2F52BB1D00811EF2 /* Sources */,
 				32B3DD9F2F52BB1D00811EF2 /* Frameworks */,
 				32B3DDA02F52BB1D00811EF2 /* Resources */,
+				FFA9000D2F60AA000000000D /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				FFA9000C2F60AA000000000C /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				32B3DDA42F52BB1D00811EF2 /* MilkStash */,
@@ -82,6 +137,28 @@
 			productName = MilkStash;
 			productReference = 32B3DDA22F52BB1D00811EF2 /* MilkStash.app */;
 			productType = "com.apple.product-type.application";
+		};
+		FFA900042F60AA0000000004 /* StashWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FFA900082F60AA0000000008 /* Build configuration list for PBXNativeTarget "StashWidgetExtension" */;
+			buildPhases = (
+				FFA900052F60AA0000000005 /* Sources */,
+				FFA900062F60AA0000000006 /* Frameworks */,
+				FFA900072F60AA0000000007 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				FFA900022F60AA0000000002 /* StashWidget */,
+			);
+			name = StashWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = StashWidgetExtension;
+			productReference = FFA900012F60AA0000000001 /* StashWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -94,6 +171,9 @@
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					32B3DDA12F52BB1D00811EF2 = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					FFA900042F60AA0000000004 = {
 						CreatedOnToolsVersion = 26.3;
 					};
 				};
@@ -113,12 +193,20 @@
 			projectRoot = "";
 			targets = (
 				32B3DDA12F52BB1D00811EF2 /* MilkStash */,
+				FFA900042F60AA0000000004 /* StashWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		32B3DDA02F52BB1D00811EF2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FFA900072F60AA0000000007 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -135,7 +223,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		FFA900052F60AA0000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FFA9000C2F60AA000000000C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = FFA900042F60AA0000000004 /* StashWidgetExtension */;
+			targetProxy = FFA9000B2F60AA000000000B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		32B3DDAB2F52BB1F00811EF2 /* Debug */ = {
@@ -333,6 +436,60 @@
 			};
 			name = Release;
 		};
+		FFA900092F60AA0000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = StashWidget/StashWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = F9376J8ZU8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = StashWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "FreezeFlow Stash";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.6;
+				PRODUCT_BUNDLE_IDENTIFIER = Henok.MilkStash.StashWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		FFA9000A2F60AA000000000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = StashWidget/StashWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = F9376J8ZU8;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = StashWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "FreezeFlow Stash";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.6;
+				PRODUCT_BUNDLE_IDENTIFIER = Henok.MilkStash.StashWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -350,6 +507,15 @@
 			buildConfigurations = (
 				32B3DDAE2F52BB1F00811EF2 /* Debug */,
 				32B3DDAF2F52BB1F00811EF2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		FFA900082F60AA0000000008 /* Build configuration list for PBXNativeTarget "StashWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FFA900092F60AA0000000009 /* Debug */,
+				FFA9000A2F60AA000000000A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

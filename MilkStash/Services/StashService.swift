@@ -231,7 +231,9 @@ struct StashService {
     }
 
     /// Mark a Ziplock as discarded and log a matching history event.
-    static func discard(bag: MilkBag, unit: MilkUnit, context: ModelContext) throws {
+    /// Returns the event so callers can offer undo (delete it + restore status).
+    @discardableResult
+    static func discard(bag: MilkBag, unit: MilkUnit, context: ModelContext) throws -> UsageEvent {
         let line = UsageLineSnapshot(
             bagId: bag.id,
             labelCode: bag.labelCode,
@@ -249,6 +251,7 @@ struct StashService {
         context.insert(event)
         bag.status = .discarded
         try context.save()
+        return event
     }
 
     // MARK: - History grouping

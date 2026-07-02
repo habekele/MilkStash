@@ -17,6 +17,7 @@ struct UseMilkView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     @State private var vm = UseMilkViewModel()
     @FocusState private var bagFieldFocused: Bool
@@ -148,7 +149,7 @@ struct UseMilkView: View {
             .padding(.top, 10)
             .padding(.bottom, 6)
         }
-        .background(.ultraThinMaterial)
+        .background(reduceTransparency ? AnyShapeStyle(Color.ffBg) : AnyShapeStyle(.ultraThinMaterial))
     }
 
     // MARK: - Confirm + success

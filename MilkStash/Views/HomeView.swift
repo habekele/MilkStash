@@ -117,6 +117,9 @@ struct HomeView: View {
             .tracksTabBar()
             .navigationBarHidden(true)
         }
+        .onReceive(NotificationCenter.default.publisher(for: ExpiryNotifications.openUseMilk)) { _ in
+            showUseMilk = true
+        }
         .sheet(isPresented: $showAddBag)  { AddEditBagView(bag: nil) }
         .sheet(isPresented: $showUseMilk) { UseMilkView() }
         .sheet(isPresented: $showAlerts) {

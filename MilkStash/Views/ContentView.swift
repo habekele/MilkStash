@@ -42,6 +42,11 @@ struct ContentView: View {
         }
         .environmentObject(tabBar)
         .onChange(of: selectedTab) { _, _ in tabBar.reveal() }
+        .onReceive(NotificationCenter.default.publisher(for: ExpiryNotifications.openUseMilk)) { _ in
+            // Expiry notification tapped: land on Home, where the Use Milk
+            // sheet opens (HomeView listens for the same signal).
+            selectedTab = 0
+        }
         .task {
             if settings.isEmpty {
                 let s = AppSettings()
@@ -148,6 +153,8 @@ extension View {
 struct FFTabBar: View {
     @Binding var selectedTab: Int
     @EnvironmentObject private var tabBar: TabBarVisibility
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     private let items: [(icon: String, selectedIcon: String, label: String)] = [
         ("house",       "house.fill",       "Today"),
@@ -162,8 +169,12 @@ struct FFTabBar: View {
             ForEach(0..<items.count, id: \.self) { idx in
                 let selected = selectedTab == idx
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    if reduceMotion {
                         selectedTab = idx
+                    } else {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            selectedTab = idx
+                        }
                     }
                 } label: {
                     Image(systemName: selected ? items[idx].selectedIcon : items[idx].icon)
@@ -185,17 +196,20 @@ struct FFTabBar: View {
         .padding(.vertical, 6)
         .background(
             ZStack {
-                Color.ffSurface.opacity(0.92)
-                Rectangle().fill(.regularMaterial)
+                // Solid surface when Reduce Transparency is on; blur otherwise.
+                Color.ffSurface.opacity(reduceTransparency ? 1 : 0.92)
+                if !reduceTransparency {
+                    Rectangle().fill(.regularMaterial)
+                }
             }
             .clipShape(Capsule())
         )
         .overlay(Capsule().stroke(Color.ffLine, lineWidth: 0.5))
         .shadow(color: .black.opacity(0.12), radius: 16, x: 0, y: 6)
-        .padding(.bottom, 6)
-        .offset(y: tabBar.hidden ? 130 : 0)
+        .offset(y: tabBar.hidden && !reduceMotion ? 130 : 0)
         .opacity(tabBar.hidden ? 0 : 1)
-        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: tabBar.hidden)
+        .animation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.86), value: tabBar.hidden)
+        .padding(.bottom, 6)
     }
 }
 
@@ -369,12 +383,23 @@ extension Color {
 
 /// Pressed-state feedback (subtle scale + dim) so chips and CTAs respond to
 /// touch like native controls. Rows and icon buttons keep `.plain`.
+/// Falls back to a plain dim when Reduce Motion is on.
 struct FFPressable: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1)
-            .opacity(configuration.isPressed ? 0.8 : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: configuration.isPressed)
+        FFPressableBody(configuration: configuration)
+    }
+
+    private struct FFPressableBody: View {
+        @Environment(\.accessibilityReduceMotion) private var reduceMotion
+        let configuration: Configuration
+
+        var body: some View {
+            configuration.label
+                .scaleEffect(configuration.isPressed && !reduceMotion ? 0.97 : 1)
+                .opacity(configuration.isPressed ? 0.8 : 1)
+                .animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.8),
+                           value: configuration.isPressed)
+        }
     }
 }
 

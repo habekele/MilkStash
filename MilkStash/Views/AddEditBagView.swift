@@ -559,6 +559,11 @@ struct AddEditBagView: View {
         if vm.save(bag: bag, context: context, settings: appSettings) {
             Haptics.success()
             Announce.post("\(isEditing ? "Saved" : "Added to stash"): \(UnitConversion.formatted(totalOz, in: vm.unit)), \(bags) milk bag\(bags == 1 ? "" : "s")")
+            if !isEditing {
+                // First Brick just landed — the moment a "use it before it
+                // expires" reminder makes obvious sense to the user.
+                ExpiryNotifications.requestAuthorizationIfNeeded()
+            }
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                 savedSummary = (totalOz, bags)
             }

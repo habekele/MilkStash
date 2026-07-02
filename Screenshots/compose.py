@@ -24,7 +24,7 @@ _iphone_copy = {
         "03_addbag":  ("Log a pump\nin seconds.",                "Volume, date, storage — done in two taps."),
         "04_goal":    ("Hit your goals,\ngently.",               "Daily totals that celebrate progress."),
         "05_feed":    ("Every feed,\nevery bottle.",             "Dispense the oldest milk first, automatically."),
-        "06_settings":("Private\nby design.",                    "Your data stays on your device. Always."),
+        "06_settings":("Private\nby design.",                    "Synced securely with iCloud. Never shared, never sold."),
 }
 COPY = {
     "iphone":    _iphone_copy,
