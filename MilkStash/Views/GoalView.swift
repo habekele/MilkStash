@@ -136,7 +136,14 @@ struct GoalView: View {
             .background(Color.ffBg.ignoresSafeArea())
             .tracksTabBar()
             .navigationBarHidden(true)
-            .sheet(isPresented: $editingGoal) {
+            .sheet(isPresented: $editingGoal, onDismiss: {
+                // Any real dismissal (Cancel or Set Goal) means the user has
+                // seen the onboarding prompt — never auto-open it again.
+                if let target = settings.first, !target.goalSetupPromptShown {
+                    target.goalSetupPromptShown = true
+                    try? context.save()
+                }
+            }) {
                 GoalSetupSheet(
                     currentMonths: setupInitialMonths,
                     dailyOz: s.effectiveDailyOzGoal
@@ -147,6 +154,7 @@ struct GoalView: View {
                     target.goalMonths    = months
                     target.goalStartDate = Date()
                     target.goalStartOz   = currentOz
+                    target.goalSetupPromptShown = true
                     do { try context.save() } catch { print("GoalView: save failed:", error) }
                 }
             }
@@ -230,9 +238,17 @@ struct GoalView: View {
             Haptics.success()
         }
 
-        // Onboarding auto-open only while still building.
-        if s.journeyMode == .building && s.goalMonths == 3 && s.goalStartOz == 0 && stashBags.isEmpty {
-            editingGoal = true
+        // Onboarding auto-open: only while still building with an empty stash,
+        // and only until the user has actually seen and dismissed the sheet.
+        // The flag is stamped in the sheet's onDismiss (not here): SwiftUI can
+        // drop a presentation requested during the tab-switch animation and
+        // resets the binding when it does, so stamping at schedule time could
+        // burn the one prompt without it ever appearing. A dropped attempt
+        // leaves the flag clear and simply retries on the next activation.
+        if !s.goalSetupPromptShown && s.journeyMode == .building && stashBags.isEmpty {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                editingGoal = true
+            }
         }
     }
 

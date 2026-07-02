@@ -199,6 +199,7 @@ final class AppSettings {
     var journeyModeRaw: String = JourneyMode.building.rawValue
     var lastCelebratedGoalDate: Date? = nil   // the goalStartDate we last celebrated, so re-reaching the same goal doesn't re-fire
     var drawdownNudgeDismissedForGoal: Date? = nil  // goalStartDate whose drawdown nudge was dismissed (persists across launches)
+    var goalSetupPromptShown: Bool = false    // onboarding goal sheet auto-opens once, ever — cancelling must not re-prompt
 
     init() {
         self.preferredUnitRaw = MilkUnit.oz.rawValue
@@ -213,6 +214,7 @@ final class AppSettings {
         self.journeyModeRaw = JourneyMode.building.rawValue
         self.lastCelebratedGoalDate = nil
         self.drawdownNudgeDismissedForGoal = nil
+        self.goalSetupPromptShown = false
     }
 
     var journeyMode: JourneyMode {
