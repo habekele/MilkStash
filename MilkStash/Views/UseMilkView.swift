@@ -64,7 +64,7 @@ struct UseMilkView: View {
             }
             .background(Color.ffBg.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
-            .navigationBarHidden(true)
+            .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) { confirmBar }
             .overlay {
                 if let summary = loggedSummary {
@@ -72,6 +72,10 @@ struct UseMilkView: View {
                 }
             }
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .tint(Color.ffInk2)
+                }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") { bagFieldFocused = false }
@@ -97,25 +101,16 @@ struct UseMilkView: View {
                 }
             }
         }
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Header
 
     private var headerArea: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .font(.ff(size: 16))
-                    .foregroundStyle(Color.ffInk2)
-                Spacer()
-            }
-
-            Text("Use Milk")
-                .font(.ff(size: 32, weight: .regular, design: .serif))
-                .foregroundStyle(Color.ffInk)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 8)
+        Text("Use Milk")
+            .font(.ff(size: 32, weight: .regular, design: .serif))
+            .foregroundStyle(Color.ffInk)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Bottom confirm bar
@@ -132,25 +127,28 @@ struct UseMilkView: View {
     }
 
     private var confirmBar: some View {
-        Button {
-            confirmUse()
-        } label: {
-            Text(confirmReady
-                 ? "Confirm · \(UnitConversion.formatted(vm.totalCoveredOz, in: vm.unit)) · \(vm.totalSelectedBags) bag\(vm.totalSelectedBags == 1 ? "" : "s")"
-                 : confirmHint)
-                .font(.ff(size: 16, weight: .semibold))
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
-                .foregroundStyle(confirmReady ? .white : Color.ffInk3)
-                .background(confirmReady ? Color.ffTerra : Color.ffSurface2,
-                            in: RoundedRectangle(cornerRadius: Radius.l))
+        VStack(spacing: 0) {
+            FFDivider()
+            Button {
+                confirmUse()
+            } label: {
+                Text(confirmReady
+                     ? "Confirm · \(UnitConversion.formatted(vm.totalCoveredOz, in: vm.unit)) · \(vm.totalSelectedBags) bag\(vm.totalSelectedBags == 1 ? "" : "s")"
+                     : confirmHint)
+                    .font(.ff(size: 16, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 15)
+                    .foregroundStyle(confirmReady ? .white : Color.ffInk3)
+                    .background(confirmReady ? Color.ffTerra : Color.ffSurface2,
+                                in: RoundedRectangle(cornerRadius: Radius.l))
+            }
+            .buttonStyle(.ffPressable)
+            .disabled(!confirmReady || loggedSummary != nil)
+            .padding(.horizontal, 18)
+            .padding(.top, 10)
+            .padding(.bottom, 6)
         }
-        .buttonStyle(.plain)
-        .disabled(!confirmReady || loggedSummary != nil)
-        .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
-        .background(Color.ffBg.opacity(0.94))
+        .background(.ultraThinMaterial)
     }
 
     // MARK: - Confirm + success
@@ -211,7 +209,7 @@ struct UseMilkView: View {
                         .padding(.vertical, 9)
                         .background(Color.ffTerraSoft, in: Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.ffPressable)
                 .padding(.top, 4)
             }
             .padding(.horizontal, 32)
@@ -308,7 +306,7 @@ struct UseMilkView: View {
                                 .foregroundStyle(isSelected ? .white : Color.ffInk)
                                 .overlay(Capsule().stroke(isSelected ? Color.clear : Color.ffLine, lineWidth: 0.5))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.ffPressable)
                     }
                 }
                 .padding(.vertical, 2)

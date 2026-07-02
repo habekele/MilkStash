@@ -109,7 +109,7 @@ struct GoalView: View {
             (s.effectiveDailyOzGoal * 14, "Two weeks of supply"),
             (s.effectiveDailyOzGoal * 30, "One month of supply"),
             (s.goalTargetOz / 2,          "Halfway to goal"),
-            (s.goalTargetOz,              "\(s.goalMonths) months · \(String(format: "%.0f", s.goalTargetOz)) oz"),
+            (s.goalTargetOz,              "\(s.goalMonths) months · \(UnitConversion.formatted(s.goalTargetOz, in: s.preferredUnit, decimals: 0))"),
         ]
         return defs.sorted { $0.oz < $1.oz }
     }
@@ -298,8 +298,8 @@ struct GoalView: View {
             .accessibilityLabel("Dismiss")
         }
         .padding(14)
-        .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.ffLine, lineWidth: 0.5))
+        .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: Radius.l))
+        .overlay(RoundedRectangle(cornerRadius: Radius.l).stroke(Color.ffLine, lineWidth: 0.5))
     }
 
     // MARK: - Celebration Card (.celebrating)
@@ -342,9 +342,9 @@ struct GoalView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 15)
                             .foregroundStyle(.white)
-                            .background(Color.ffTerra, in: RoundedRectangle(cornerRadius: 14))
+                            .background(Color.ffTerra, in: RoundedRectangle(cornerRadius: Radius.l))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.ffPressable)
 
                     Button { setMode(.maintaining) } label: {
                         Text("Start using my stash")
@@ -352,16 +352,16 @@ struct GoalView: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 15)
                             .foregroundStyle(Color.ffTerra)
-                            .background(Color.ffTerraSoft, in: RoundedRectangle(cornerRadius: 14))
+                            .background(Color.ffTerraSoft, in: RoundedRectangle(cornerRadius: Radius.l))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.ffPressable)
 
                     Button { setMode(.complete) } label: {
                         Text("I'm all done")
                             .font(.ff(size: 14, weight: .medium))
                             .foregroundStyle(Color.ffInk3)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.ffPressable)
                     .padding(.top, 2)
                 }
             }
@@ -449,7 +449,7 @@ struct GoalView: View {
                         Spacer(minLength: 0)
                     }
                     .padding(12)
-                    .background(Color.ffTerraSoft, in: RoundedRectangle(cornerRadius: 12))
+                    .background(Color.ffTerraSoft, in: RoundedRectangle(cornerRadius: Radius.m))
                 }
             }
         }
@@ -496,7 +496,7 @@ struct GoalView: View {
                         .padding(.vertical, 10)
                         .background(Color.ffTerraSoft, in: Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.ffPressable)
             }
         }
     }
@@ -735,13 +735,13 @@ struct GoalView: View {
                         .background(Color.ffTerraSoft)
                         .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.ffPressable)
             }
             .padding(18)
             .background(Color.ffSurface)
-            .clipShape(RoundedRectangle(cornerRadius: 22))
+            .clipShape(RoundedRectangle(cornerRadius: Radius.xl))
             .overlay(
-                RoundedRectangle(cornerRadius: 22)
+                RoundedRectangle(cornerRadius: Radius.xl)
                     .stroke(style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
                     .foregroundStyle(Color.ffLine)
             )
@@ -876,9 +876,9 @@ struct GoalSetupSheet: View {
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 16)
                             .foregroundStyle(.white)
-                            .background(Color.ffTerra, in: RoundedRectangle(cornerRadius: 16))
+                            .background(Color.ffTerra, in: RoundedRectangle(cornerRadius: Radius.l))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.ffPressable)
                     .padding(.horizontal)
                     .padding(.bottom, 24)
                 }
@@ -891,6 +891,7 @@ struct GoalSetupSheet: View {
                 }
             }
         }
+        .presentationDragIndicator(.visible)
     }
 }
 
@@ -920,8 +921,8 @@ struct GoalStatCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.ffLine, lineWidth: 0.5))
+        .background(Color.ffSurface, in: RoundedRectangle(cornerRadius: Radius.l))
+        .overlay(RoundedRectangle(cornerRadius: Radius.l).stroke(Color.ffLine, lineWidth: 0.5))
     }
 }
 

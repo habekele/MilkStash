@@ -495,7 +495,10 @@ struct FFFilterChip: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            Haptics.light()
+            action()
+        } label: {
             Text(label)
                 .font(.ff(size: 13, weight: .medium))
                 .foregroundStyle(isActive ? Color.ffSurface : Color.ffInk2)
@@ -505,7 +508,7 @@ struct FFFilterChip: View {
                 .clipShape(Capsule())
                 .overlay(Capsule().stroke(Color.ffLine, lineWidth: 0.5))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.ffPressable)
     }
 }
 
@@ -561,15 +564,18 @@ struct FFInventoryRow: View {
             .frame(width: 36)
 
             VStack(alignment: .leading, spacing: 5) {
-                // Brick label
+                // Brick label — the date never wraps; the sequence tag truncates first
                 HStack(spacing: 6) {
                     Text(DateFormatter.freeze.string(from: bag.freezeDate))
                         .font(.ff(size: 15, weight: .semibold))
                         .foregroundStyle(Color.ffInk)
+                        .lineLimit(1)
+                        .layoutPriority(1)
                     if !seq.isEmpty {
                         Text(seq)
                             .font(.ff(size: 11, weight: .medium))
                             .foregroundStyle(Color.ffInk3)
+                            .lineLimit(1)
                     }
                 }
 
@@ -675,34 +681,25 @@ struct FilterSortSheet: View {
                 .padding(.bottom, 32)
             }
             .background(Color.ffBg.ignoresSafeArea())
-            .navigationBarHidden(true)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
+                        .tint(Color.ffTerra)
+                }
+            }
         }
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Header
 
     private var headerArea: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Spacer()
-                Button {
-                    dismiss()
-                } label: {
-                    Text("Done")
-                        .font(.ff(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 7)
-                        .background(Color.ffTerra, in: Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-            Text("Filter & Sort")
-                .font(.ff(size: 32, weight: .regular, design: .serif))
-                .foregroundStyle(Color.ffInk)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 8)
+        Text("Filter & Sort")
+            .font(.ff(size: 32, weight: .regular, design: .serif))
+            .foregroundStyle(Color.ffInk)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Sort
@@ -862,7 +859,7 @@ struct FilterSortSheet: View {
             .background(Color.milkDanger.opacity(0.08), in: RoundedRectangle(cornerRadius: Radius.l))
             .overlay(RoundedRectangle(cornerRadius: Radius.l).stroke(Color.milkDanger.opacity(0.2), lineWidth: 0.5))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.ffPressable)
         .padding(.top, 4)
     }
 

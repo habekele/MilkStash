@@ -30,6 +30,7 @@ struct AlertsSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Space.l) {
+                    headerArea
                     if !hasAlerts {
                         allClear
                     } else {
@@ -38,19 +39,29 @@ struct AlertsSheet: View {
                     }
                 }
                 .padding(.horizontal, Space.screenPad)
-                .padding(.top, Space.s)
+                .padding(.top, 4)
                 .padding(.bottom, Space.xl)
             }
             .background(Color.ffBg.ignoresSafeArea())
-            .navigationTitle("Alerts")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
-                        .foregroundStyle(Color.ffTerra)
+                        .fontWeight(.semibold)
+                        .tint(Color.ffTerra)
                 }
             }
         }
+        .presentationDragIndicator(.visible)
+    }
+
+    // MARK: - Header (matches the app's serif sheet headers)
+
+    private var headerArea: some View {
+        Text("Alerts")
+            .font(.ff(size: 32, weight: .regular, design: .serif))
+            .foregroundStyle(Color.ffInk)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Sections

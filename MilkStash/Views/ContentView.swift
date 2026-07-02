@@ -367,6 +367,21 @@ extension Color {
 
 // MARK: - Shared Design Components
 
+/// Pressed-state feedback (subtle scale + dim) so chips and CTAs respond to
+/// touch like native controls. Rows and icon buttons keep `.plain`.
+struct FFPressable: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.8 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: configuration.isPressed)
+    }
+}
+
+extension ButtonStyle where Self == FFPressable {
+    static var ffPressable: FFPressable { FFPressable() }
+}
+
 /// Standard card container
 struct FFCard<Content: View>: View {
     let content: () -> Content

@@ -322,7 +322,7 @@ struct HomeView: View {
                     .stroke(style == .primary ? Color.clear : Color.ffLine, lineWidth: 0.5)
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.ffPressable)
         .frame(maxWidth: .infinity)
     }
 

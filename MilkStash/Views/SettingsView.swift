@@ -301,9 +301,6 @@ struct SettingsView: View {
                 HStack {
                     settingsLabel(icon: "square.and.arrow.up", label: "Export stash (CSV)")
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.ff(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.ffInk3)
                 }
                 .contentShape(Rectangle())
             }
@@ -315,9 +312,6 @@ struct SettingsView: View {
                 HStack {
                     settingsLabel(icon: "square.and.arrow.up", label: "Export history (CSV)")
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.ff(size: 12, weight: .semibold))
-                        .foregroundStyle(Color.ffInk3)
                 }
                 .contentShape(Rectangle())
             }

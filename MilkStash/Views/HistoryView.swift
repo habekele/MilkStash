@@ -85,10 +85,14 @@ struct HistoryView: View {
             Image(systemName: "clock.arrow.circlepath")
                 .font(.ff(size: 56))
                 .foregroundStyle(Color.ffTerra.opacity(0.5))
-            Text("No history yet")
+            Text(events.isEmpty ? "No history yet" : "Nothing here")
                 .font(.ff(size: 20, weight: .regular, design: .serif))
                 .foregroundStyle(Color.ffInk)
-            Text("When you use or discard milk, it'll show up here.")
+            Text(events.isEmpty
+                 ? "When you use or discard milk, it'll show up here."
+                 : kindFilter == .discarded
+                     ? "No discarded entries — not a drop wasted."
+                     : "No used entries yet.")
                 .font(.subheadline)
                 .foregroundStyle(Color.ffInk2)
                 .multilineTextAlignment(.center)

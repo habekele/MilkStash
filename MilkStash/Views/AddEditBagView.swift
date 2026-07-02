@@ -56,7 +56,7 @@ struct AddEditBagView: View {
             }
             .background(Color.ffBg.ignoresSafeArea())
             .scrollDismissesKeyboard(.interactively)
-            .navigationBarHidden(true)
+            .navigationBarTitleDisplayMode(.inline)
             .overlay {
                 if let s = savedSummary {
                     savedOverlay(oz: s.oz, bags: s.bags)
@@ -69,6 +69,16 @@ struct AddEditBagView: View {
                 Text("This permanently removes this Brick from your stash. This can't be undone.")
             }
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .tint(Color.ffInk2)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(isEditing ? "Save" : "Add") { save() }
+                        .fontWeight(.semibold)
+                        .tint(Color.ffTerra)
+                        .disabled(!vm.isValid)
+                }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") { focusedField = nil }
@@ -85,32 +95,16 @@ struct AddEditBagView: View {
                 vm.updateExpirationIfNeeded(settings: appSettings)
             }
         }
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: - Header
 
     private var headerArea: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Button("Cancel") { dismiss() }
-                    .font(.ff(size: 16))
-                    .foregroundStyle(Color.ffInk2)
-                Spacer()
-                Button(isEditing ? "Save" : "Add") { save() }
-                    .font(.ff(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 7)
-                    .background(Color.ffTerra.opacity(vm.isValid ? 1 : 0.45), in: Capsule())
-                    .disabled(!vm.isValid)
-            }
-
-            Text(isEditing ? "Edit Brick" : "New Brick")
-                .font(.ff(size: 32, weight: .regular, design: .serif))
-                .foregroundStyle(Color.ffInk)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 8)
+        Text(isEditing ? "Edit Brick" : "New Brick")
+            .font(.ff(size: 32, weight: .regular, design: .serif))
+            .foregroundStyle(Color.ffInk)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Contents
@@ -256,7 +250,7 @@ struct AddEditBagView: View {
                                 .foregroundStyle(isSelected ? .white : Color.ffInk)
                                 .overlay(Capsule().stroke(isSelected ? Color.clear : Color.ffLine, lineWidth: 0.5))
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.ffPressable)
                     }
                 }
                 .padding(.vertical, 2)
@@ -494,7 +488,7 @@ struct AddEditBagView: View {
             .background(Color.milkDanger.opacity(0.10), in: RoundedRectangle(cornerRadius: Radius.l))
             .overlay(RoundedRectangle(cornerRadius: Radius.l).stroke(Color.milkDanger.opacity(0.25), lineWidth: 0.5))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.ffPressable)
         .padding(.top, 4)
     }
 
@@ -600,7 +594,7 @@ struct AddEditBagView: View {
             .padding(.vertical, 14)
             .background(Color.ffTerraSoft, in: RoundedRectangle(cornerRadius: Radius.l))
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.ffPressable)
         .disabled(!vm.isValid)
         .opacity(vm.isValid ? 1 : 0.5)
         .padding(.top, 4)
